@@ -6,8 +6,8 @@
 import React, { useState, useEffect } from 'react';
 import {
     MagnifyingGlass, User, PencilSimple, X, CheckCircle, XCircle,
-    Clock, Shield, Trash, Key, Eye, GoogleLogo, GithubLogo, FacebookLogo,
-    IdentificationCard
+    Clock, Shield, Trash, Key, Eye, EyeSlash, GoogleLogo, GithubLogo, FacebookLogo,
+    IdentificationCard, Plus, UserPlus
 } from 'phosphor-react';
 import api from '../services/api';
 import Loading from '../components/shared/Loading';
@@ -25,9 +25,19 @@ const UserManagement = () => {
     const [showEditModal, setShowEditModal] = useState(false);
     const [showResetPasswordModal, setShowResetPasswordModal] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [showCreateModal, setShowCreateModal] = useState(false);
     const [selectedUser, setSelectedUser] = useState(null);
     const [editingUser, setEditingUser] = useState(null);
     const [newPassword, setNewPassword] = useState('');
+    const [showCreatePassword, setShowCreatePassword] = useState(false);
+    const [creating, setCreating] = useState(false);
+    const [createForm, setCreateForm] = useState({
+        username: '',
+        email: '',
+        firstName: '',
+        lastName: '',
+        password: '',
+    });
     const [userForm, setUserForm] = useState({
         firstName: '',
         lastName: '',
@@ -35,6 +45,31 @@ const UserManagement = () => {
         enabled: true,
         emailVerified: false,
     });
+
+    // Password strength for create form
+    const getPasswordStrength = (password) => {
+        if (!password) return { score: 0, label: '', color: '' };
+        let score = 0;
+        if (password.length >= 8) score++;
+        if (/[A-Z]/.test(password)) score++;
+        if (/[a-z]/.test(password)) score++;
+        if (/\d/.test(password)) score++;
+        if (/[!@#$%^&*(),.?":{}|<>]/.test(password)) score++;
+        if (score === 5) return { score: 5, label: 'Strong', color: '#10b981' };
+        if (score >= 4) return { score: 4, label: 'Good', color: '#3b82f6' };
+        if (score >= 3) return { score: 3, label: 'Fair', color: '#f59e0b' };
+        if (score >= 2) return { score: 2, label: 'Weak', color: '#f59e0b' };
+        return { score: 1, label: 'Very Weak', color: '#d97706' };
+    };
+
+    const createPasswordStrength = getPasswordStrength(createForm.password);
+    const createRequirements = [
+        { label: 'Minimal 8 karakter', met: createForm.password.length >= 8 },
+        { label: 'Huruf besar (A-Z)', met: /[A-Z]/.test(createForm.password) },
+        { label: 'Huruf kecil (a-z)', met: /[a-z]/.test(createForm.password) },
+        { label: 'Angka (0-9)', met: /\d/.test(createForm.password) },
+        { label: 'Karakter khusus (!@#$...)', met: /[!@#$%^&*(),.?":{}|<>]/.test(createForm.password) },
+    ];
 
     useEffect(() => {
         loadUsers();
@@ -113,6 +148,30 @@ const UserManagement = () => {
         }
     };
 
+    const handleCreateUser = async (e) => {
+        e.preventDefault();
+        if (!createForm.username || !createForm.email || !createForm.password) {
+            toast.error('Username, email, dan password wajib diisi');
+            return;
+        }
+        if (createPasswordStrength.score < 4) {
+            toast.error('Password belum cukup kuat (minimal 4 dari 5 kriteria)');
+            return;
+        }
+        try {
+            setCreating(true);
+            await api.post('/api/admin/users', createForm);
+            toast.success(`User ${createForm.username} berhasil dibuat!`);
+            setShowCreateModal(false);
+            setCreateForm({ username: '', email: '', firstName: '', lastName: '', password: '' });
+            loadUsers();
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Gagal membuat user');
+        } finally {
+            setCreating(false);
+        }
+    };
+
     const getProviderIcon = (provider) => {
         switch (provider?.toLowerCase()) {
             case 'google':
@@ -165,6 +224,10 @@ const UserManagement = () => {
                     <h2>User Management</h2>
                     <p>{users.length} total users</p>
                 </div>
+                <button className="btn-primary" onClick={() => setShowCreateModal(true)}>
+                    <UserPlus size={20} weight="bold" />
+                    Buat Akun Baru
+                </button>
             </div>
 
             {/* Search */}
@@ -414,6 +477,154 @@ const UserManagement = () => {
                                     Hapus Permanen
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Create User Modal */}
+            {showCreateModal && (
+                <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
+                    <div className="modal-content" style={{ maxWidth: '500px' }} onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h3>Buat Akun Baru</h3>
+                            <button className="icon-btn" onClick={() => setShowCreateModal(false)}>
+                                <X size={24} />
+                            </button>
+                        </div>
+
+                        <div className="modal-body">
+                            <form onSubmit={handleCreateUser}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                                    <div className="form-group">
+                                        <label>Nama Depan</label>
+                                        <input
+                                            type="text"
+                                            className="form-input"
+                                            placeholder="Nama depan"
+                                            value={createForm.firstName}
+                                            onChange={(e) => setCreateForm({ ...createForm, firstName: e.target.value })}
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label>Nama Belakang</label>
+                                        <input
+                                            type="text"
+                                            className="form-input"
+                                            placeholder="Nama belakang"
+                                            value={createForm.lastName}
+                                            onChange={(e) => setCreateForm({ ...createForm, lastName: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="form-group" style={{ marginBottom: '16px' }}>
+                                    <label>Username *</label>
+                                    <input
+                                        type="text"
+                                        className="form-input"
+                                        placeholder="username"
+                                        value={createForm.username}
+                                        onChange={(e) => setCreateForm({ ...createForm, username: e.target.value })}
+                                        required
+                                    />
+                                </div>
+
+                                <div className="form-group" style={{ marginBottom: '16px' }}>
+                                    <label>Email *</label>
+                                    <input
+                                        type="email"
+                                        className="form-input"
+                                        placeholder="user@example.com"
+                                        value={createForm.email}
+                                        onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
+                                        required
+                                    />
+                                </div>
+
+                                <div className="form-group" style={{ marginBottom: '16px' }}>
+                                    <label>Password *</label>
+                                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                                        <input
+                                            type={showCreatePassword ? 'text' : 'password'}
+                                            className="form-input"
+                                            style={{ paddingRight: '48px', width: '100%' }}
+                                            placeholder="Minimal 8 karakter"
+                                            value={createForm.password}
+                                            onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
+                                            required
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowCreatePassword(!showCreatePassword)}
+                                            style={{ position: 'absolute', right: '12px', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '4px', display: 'flex' }}
+                                        >
+                                            {showCreatePassword ? <EyeSlash size={18} /> : <Eye size={18} />}
+                                        </button>
+                                    </div>
+
+                                    {/* Strength Bar */}
+                                    {createForm.password && (
+                                        <div style={{ marginTop: '10px' }}>
+                                            <div style={{ height: '6px', background: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
+                                                <div style={{
+                                                    width: `${(createPasswordStrength.score / 5) * 100}%`,
+                                                    height: '100%',
+                                                    backgroundColor: createPasswordStrength.color,
+                                                    borderRadius: '3px',
+                                                    transition: 'width 0.3s ease, background-color 0.3s ease',
+                                                }} />
+                                            </div>
+                                            <span style={{ fontSize: '0.85rem', color: createPasswordStrength.color, fontWeight: '600', marginTop: '4px', display: 'block' }}>
+                                                {createPasswordStrength.label}
+                                            </span>
+                                        </div>
+                                    )}
+
+                                    {/* Requirements */}
+                                    {createForm.password && (
+                                        <div style={{ marginTop: '12px', display: 'grid', gap: '4px' }}>
+                                            {createRequirements.map((req, i) => (
+                                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem' }}>
+                                                    {req.met
+                                                        ? <CheckCircle size={16} weight="fill" style={{ color: '#10b981', flexShrink: 0 }} />
+                                                        : <XCircle size={16} weight="fill" style={{ color: '#cbd5e1', flexShrink: 0 }} />}
+                                                    <span style={{ color: req.met ? '#10b981' : '#94a3b8' }}>{req.label}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
+                                    <button
+                                        type="button"
+                                        style={{ padding: '10px 20px', borderRadius: '8px', border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer' }}
+                                        onClick={() => setShowCreateModal(false)}
+                                    >
+                                        Batal
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={creating || createPasswordStrength.score < 4}
+                                        style={{
+                                            padding: '10px 20px',
+                                            borderRadius: '8px',
+                                            border: 'none',
+                                            background: creating || createPasswordStrength.score < 4 ? '#94a3b8' : 'linear-gradient(135deg, #38bdf8, #0ea5e9)',
+                                            color: 'white',
+                                            cursor: creating || createPasswordStrength.score < 4 ? 'not-allowed' : 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            fontWeight: '600',
+                                        }}
+                                    >
+                                        <UserPlus size={18} />
+                                        {creating ? 'Membuat...' : 'Buat Akun'}
+                                    </button>
+                                </div>
+                            </form>
                         </div>
                     </div>
                 </div>

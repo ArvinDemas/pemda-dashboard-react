@@ -8,7 +8,7 @@ const axios = require('axios');
 const Document = require('../models/Document');
 const Note = require('../models/Note');
 
-const KEYCLOAK_URL = process.env.KEYCLOAK_URL || 'http://10.7.183.128:8080';
+const KEYCLOAK_URL = process.env.KEYCLOAK_URL || 'http://localhost:8080';
 const REALM = process.env.KEYCLOAK_REALM || 'Jogja-SSO';
 
 /**
@@ -282,6 +282,120 @@ exports.resetUserPassword = async (req, res) => {
         res.status(500).json({
             error: 'Internal Server Error',
             message: 'Failed to reset password'
+        });
+    }
+};
+
+/**
+ * Create new user in Keycloak
+ * POST /api/admin/users
+ */
+exports.createUser = async (req, res) => {
+    try {
+        const { username, email, firstName, lastName, password, enabled = true } = req.body;
+
+        console.log('➕ Creating new user:', username);
+
+        // Validate required fields
+        if (!username || !email || !password) {
+            return res.status(400).json({
+                error: 'Validation Error',
+                message: 'Username, email, dan password wajib diisi'
+            });
+        }
+
+        if (password.length < 8) {
+            return res.status(400).json({
+                error: 'Validation Error',
+                message: 'Password minimal 8 karakter'
+            });
+        }
+
+        const adminToken = await getAdminToken();
+
+        // Step 1: Create user in Keycloak
+        const createResponse = await axios.post(
+            `${KEYCLOAK_URL}/admin/realms/${REALM}/users`,
+            {
+                username: username.trim(),
+                email: email.trim(),
+                firstName: (firstName || '').trim(),
+                lastName: (lastName || '').trim(),
+                enabled: enabled,
+                emailVerified: true,
+            },
+            {
+                headers: {
+                    Authorization: `Bearer ${adminToken}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+
+        // Get new user ID from Location header
+        const locationHeader = createResponse.headers['location'] || createResponse.headers['Location'];
+        const newUserId = locationHeader ? locationHeader.split('/').pop() : null;
+
+        if (!newUserId) {
+            // Try to find user by username
+            const searchResponse = await axios.get(
+                `${KEYCLOAK_URL}/admin/realms/${REALM}/users?username=${encodeURIComponent(username)}&exact=true`,
+                {
+                    headers: { Authorization: `Bearer ${adminToken}` }
+                }
+            );
+            if (searchResponse.data.length === 0) {
+                throw new Error('User created but could not retrieve ID');
+            }
+            var userId = searchResponse.data[0].id;
+        } else {
+            var userId = newUserId;
+        }
+
+        // Step 2: Set password
+        await axios.put(
+            `${KEYCLOAK_URL}/admin/realms/${REALM}/users/${userId}/reset-password`,
+            {
+                type: 'password',
+                value: password,
+                temporary: false
+            },
+            {
+                headers: {
+                    Authorization: `Bearer ${adminToken}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+
+        console.log('✅ User created successfully:', username, 'ID:', userId);
+
+        res.status(201).json({
+            success: true,
+            message: 'User berhasil dibuat',
+            user: {
+                id: userId,
+                username: username.trim(),
+                email: email.trim(),
+                firstName: (firstName || '').trim(),
+                lastName: (lastName || '').trim(),
+                enabled: enabled
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Create user error:', error.message);
+
+        if (error.response?.status === 409) {
+            return res.status(409).json({
+                error: 'Conflict',
+                message: 'Username atau email sudah digunakan'
+            });
+        }
+
+        res.status(500).json({
+            error: 'Internal Server Error',
+            message: error.response?.data?.errorMessage || 'Gagal membuat user'
         });
     }
 };

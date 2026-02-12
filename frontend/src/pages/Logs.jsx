@@ -225,21 +225,26 @@ const Logs = () => {
                         )}
                       </td>
                       <td>
-                        <span className="log-ip">{log.ipAddress}</span>
+                        <span className="log-ip">{log.ip || log.ipAddress || 'Unknown'}</span>
                       </td>
                       <td>
                         <div className="log-device">
                           <span className="device-name">
-                            {log.userAgent?.includes('Mobile') ? '📱 Mobile' : '💻 Desktop'}
+                            {log.metadata?.device === 'mobile' || log.metadata?.device === 'Mobile' ? '📱 Mobile' : '💻 Desktop'}
                           </span>
                           <span className="device-details">
-                            {log.userAgent?.split(' ')[0] || 'Unknown'}
+                            {log.metadata?.browser || 'Unknown'}
+                            {log.metadata?.os ? ` · ${log.metadata.os}` : ''}
                           </span>
                         </div>
                       </td>
                       <td>
                         <span className="log-location">
-                          {log.location || 'Unknown'}
+                          {log.metadata?.location?.city
+                            ? `${log.metadata.location.city}${log.metadata.location.country ? ', ' + log.metadata.location.country : ''}`
+                            : (log.ip?.startsWith('10.') || log.ip?.startsWith('192.168.') || log.ip === '127.0.0.1' || log.ip === '::1'
+                              ? 'Local Network'
+                              : 'Unknown')}
                         </span>
                       </td>
                     </tr>

@@ -221,6 +221,35 @@
     cursor: not-allowed;
 }
 
+/* Password Toggle */
+.input-with-toggle {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.input-with-toggle input {
+    padding-right: 48px;
+    width: 100%;
+}
+
+.password-toggle-btn {
+    position: absolute;
+    right: 12px;
+    background: none;
+    border: none;
+    color: var(--color-gray-500);
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    transition: color 0.2s;
+}
+
+.password-toggle-btn:hover {
+    color: var(--color-gray-700);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .settings-page {

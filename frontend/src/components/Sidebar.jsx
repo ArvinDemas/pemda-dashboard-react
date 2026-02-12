@@ -129,6 +129,16 @@ const Sidebar = ({ onLogout, user }) => {
           </button>
         </div>
 
+        {/* Desktop Toggle Button - positioned at top for easy access */}
+        <button
+          className="collapse-toggle desktop-only"
+          onClick={toggleCollapse}
+          title={isCollapsed ? 'Expand' : 'Collapse'}
+        >
+          <List size={20} weight="bold" />
+          {!isCollapsed && <span>Collapse</span>}
+        </button>
+
         {/* Navigation */}
         <nav className="sidebar-nav">
           {navItems.map(({ path, icon: Icon, label }) => (
@@ -146,18 +156,8 @@ const Sidebar = ({ onLogout, user }) => {
 
         {/* Footer */}
         <div className="sidebar-footer">
-          {/* Desktop Toggle Button */}
-          <button
-            className="collapse-toggle desktop-only"
-            onClick={toggleCollapse}
-            title={isCollapsed ? 'Expand' : 'Collapse'}
-          >
-            <List size={20} weight="bold" />
-            {!isCollapsed && <span>Collapse</span>}
-          </button>
-
-          {/* Logout Button - separated with margin */}
-          <button className="logout-btn" onClick={onLogout} style={{ marginTop: '16px' }}>
+          {/* Logout Button */}
+          <button className="logout-btn" onClick={onLogout}>
             <SignOut size={20} weight="regular" />
             {!isCollapsed && <span>Keluar</span>}
           </button>

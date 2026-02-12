@@ -561,6 +561,7 @@ const Notes = () => {
       {/* Delete Confirmation */}
       {deleteConfirm && (
         <ConfirmDialog
+          isOpen={!!deleteConfirm}
           title="Hapus Catatan"
           message={`Apakah Anda yakin ingin menghapus catatan "${deleteConfirm.title}"?`}
           onConfirm={handleDeleteNote}

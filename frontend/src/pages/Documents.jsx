@@ -567,6 +567,7 @@ const Documents = () => {
       {/* Delete Confirmation */}
       {deleteConfirm && (
         <ConfirmDialog
+          isOpen={!!deleteConfirm}
           title={`Hapus ${deleteConfirm.type === 'folder' ? 'Folder' : 'Dokumen'}`}
           message={`Apakah Anda yakin ingin menghapus "${deleteConfirm.originalName}"?`}
           onConfirm={handleDelete}

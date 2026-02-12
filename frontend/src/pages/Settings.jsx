@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { User, Lock } from 'phosphor-react';
+import { User, Lock, CheckCircle, XCircle, Eye, EyeSlash } from 'phosphor-react';
 import profileService from '../services/profileService';
 import { showSuccess, showError } from '../hooks/useToast';
 import Loading from '../components/shared/Loading';
@@ -27,6 +27,45 @@ const Settings = ({ user }) => {
         newPassword: '',
         confirmPassword: ''
     });
+
+    const [showPasswords, setShowPasswords] = useState({
+        current: false,
+        new: false,
+        confirm: false,
+    });
+
+    // Password strength calculation
+    const getPasswordStrength = (password) => {
+        if (!password) return { score: 0, label: '', color: '' };
+        let score = 0;
+        const checks = {
+            length: password.length >= 8,
+            uppercase: /[A-Z]/.test(password),
+            lowercase: /[a-z]/.test(password),
+            number: /\d/.test(password),
+            special: /[!@#$%^&*(),.?":{}|<>]/.test(password),
+        };
+        score = Object.values(checks).filter(Boolean).length;
+        if (score === 5) return { score: 5, label: 'Strong', color: '#10b981' };
+        if (score >= 4) return { score: 4, label: 'Good', color: '#3b82f6' };
+        if (score >= 3) return { score: 3, label: 'Fair', color: '#f59e0b' };
+        if (score >= 2) return { score: 2, label: 'Weak', color: '#f59e0b' };
+        return { score: 1, label: 'Very Weak', color: '#d97706' };
+    };
+
+    const passwordStrength = getPasswordStrength(passwordData.newPassword);
+
+    const requirements = [
+        { label: 'Minimal 8 karakter', met: passwordData.newPassword.length >= 8 },
+        { label: 'Huruf besar (A-Z)', met: /[A-Z]/.test(passwordData.newPassword) },
+        { label: 'Huruf kecil (a-z)', met: /[a-z]/.test(passwordData.newPassword) },
+        { label: 'Angka (0-9)', met: /\d/.test(passwordData.newPassword) },
+        { label: 'Karakter khusus (!@#$...)', met: /[!@#$%^&*(),.?":{}|<>]/.test(passwordData.newPassword) },
+    ];
+
+    const togglePasswordVisibility = (field) => {
+        setShowPasswords(prev => ({ ...prev, [field]: !prev[field] }));
+    };
 
     useEffect(() => {
         if (user) {
@@ -55,13 +94,13 @@ const Settings = ({ user }) => {
     const handlePasswordSubmit = async (e) => {
         e.preventDefault();
 
-        if (passwordData.newPassword !== passwordData.confirmPassword) {
-            showError('Password baru tidak cocok');
+        if (passwordStrength.score < 4) {
+            showError('Password belum cukup kuat. Pastikan memenuhi minimal 4 dari 5 kriteria.');
             return;
         }
 
-        if (passwordData.newPassword.length < 8) {
-            showError('Password minimal 8 karakter');
+        if (passwordData.newPassword !== passwordData.confirmPassword) {
+            showError('Password baru tidak cocok');
             return;
         }
 
@@ -192,41 +231,93 @@ const Settings = ({ user }) => {
                         <form onSubmit={handlePasswordSubmit} className="settings-form">
                             <div className="form-group">
                                 <label htmlFor="currentPassword">Password Saat Ini</label>
-                                <input
-                                    type="password"
-                                    id="currentPassword"
-                                    value={passwordData.currentPassword}
-                                    onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
-                                    placeholder="Masukkan password saat ini"
-                                    required
-                                />
+                                <div className="input-with-toggle">
+                                    <input
+                                        type={showPasswords.current ? 'text' : 'password'}
+                                        id="currentPassword"
+                                        value={passwordData.currentPassword}
+                                        onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
+                                        placeholder="Masukkan password saat ini"
+                                        required
+                                    />
+                                    <button type="button" className="password-toggle-btn" onClick={() => togglePasswordVisibility('current')}>
+                                        {showPasswords.current ? <EyeSlash size={18} /> : <Eye size={18} />}
+                                    </button>
+                                </div>
                             </div>
 
                             <div className="form-group">
                                 <label htmlFor="newPassword">Password Baru</label>
-                                <input
-                                    type="password"
-                                    id="newPassword"
-                                    value={passwordData.newPassword}
-                                    onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
-                                    placeholder="Masukkan password baru"
-                                    required
-                                />
+                                <div className="input-with-toggle">
+                                    <input
+                                        type={showPasswords.new ? 'text' : 'password'}
+                                        id="newPassword"
+                                        value={passwordData.newPassword}
+                                        onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                                        placeholder="Masukkan password baru"
+                                        required
+                                    />
+                                    <button type="button" className="password-toggle-btn" onClick={() => togglePasswordVisibility('new')}>
+                                        {showPasswords.new ? <EyeSlash size={18} /> : <Eye size={18} />}
+                                    </button>
+                                </div>
+
+                                {/* Password Strength Bar */}
+                                {passwordData.newPassword && (
+                                    <div className="password-strength" style={{ marginTop: '10px' }}>
+                                        <div className="strength-bar" style={{ height: '6px', background: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
+                                            <div
+                                                className="strength-fill"
+                                                style={{
+                                                    width: `${(passwordStrength.score / 5) * 100}%`,
+                                                    height: '100%',
+                                                    backgroundColor: passwordStrength.color,
+                                                    borderRadius: '3px',
+                                                    transition: 'width 0.3s ease, background-color 0.3s ease',
+                                                }}
+                                            />
+                                        </div>
+                                        <span style={{ fontSize: '0.85rem', color: passwordStrength.color, fontWeight: '600', marginTop: '4px', display: 'block' }}>
+                                            {passwordStrength.label}
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* Requirements Checklist */}
+                                {passwordData.newPassword && (
+                                    <div className="requirements-checklist" style={{ marginTop: '12px', display: 'grid', gap: '6px' }}>
+                                        {requirements.map((req, index) => (
+                                            <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem' }}>
+                                                {req.met ? (
+                                                    <CheckCircle size={18} weight="fill" style={{ color: '#10b981', flexShrink: 0 }} />
+                                                ) : (
+                                                    <XCircle size={18} weight="fill" style={{ color: '#cbd5e1', flexShrink: 0 }} />
+                                                )}
+                                                <span style={{ color: req.met ? '#10b981' : '#94a3b8' }}>{req.label}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
 
                             <div className="form-group">
                                 <label htmlFor="confirmPassword">Konfirmasi Password Baru</label>
-                                <input
-                                    type="password"
-                                    id="confirmPassword"
-                                    value={passwordData.confirmPassword}
-                                    onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
-                                    placeholder="Konfirmasi password baru"
-                                    required
-                                />
+                                <div className="input-with-toggle">
+                                    <input
+                                        type={showPasswords.confirm ? 'text' : 'password'}
+                                        id="confirmPassword"
+                                        value={passwordData.confirmPassword}
+                                        onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                                        placeholder="Konfirmasi password baru"
+                                        required
+                                    />
+                                    <button type="button" className="password-toggle-btn" onClick={() => togglePasswordVisibility('confirm')}>
+                                        {showPasswords.confirm ? <EyeSlash size={18} /> : <Eye size={18} />}
+                                    </button>
+                                </div>
                             </div>
 
-                            <button type="submit" className="submit-btn" disabled={loading}>
+                            <button type="submit" className="submit-btn" disabled={loading || passwordStrength.score < 4}>
                                 {loading ? 'Mengubah...' : 'Ubah Password'}
                             </button>
                         </form>

@@ -5,7 +5,7 @@
 
 const axios = require('axios');
 
-const KEYCLOAK_URL = process.env.KEYCLOAK_URL || 'http://10.7.183.46:8080';
+const KEYCLOAK_URL = process.env.KEYCLOAK_URL || 'http://localhost:8080';
 const REALM = process.env.KEYCLOAK_REALM || 'Jogja-SSO';
 
 /**

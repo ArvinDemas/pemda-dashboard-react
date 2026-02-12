@@ -144,7 +144,7 @@ function App() {
   const handleLogin = () => {
     console.log('🔐 Redirecting to Keycloak...');
 
-    const keycloakUrl = 'http://10.7.183.128:8080';
+    const keycloakUrl = `http://${window.location.hostname}:8080`;
     const realm = 'Jogja-SSO';
     const clientId = 'pemda-dashboard';
     const redirectUri = window.location.origin;

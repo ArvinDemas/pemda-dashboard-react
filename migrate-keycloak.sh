@@ -130,16 +130,25 @@ docker stop $CONTAINER_NAME
 echo -e "${CYAN}📥 Restoring database...${NC}"
 docker cp "$DATA_BACKUP/data/." $CONTAINER_NAME:/opt/keycloak/data/
 
+echo -e "${GREEN}✅ Database restored${NC}"
+
+# Start container temporarily to fix permissions
+echo -e "${CYAN}🚀 Starting container to fix permissions...${NC}"
+docker start $CONTAINER_NAME
+
+echo -e "${YELLOW}⏳ Waiting for container to start (10 seconds)...${NC}"
+sleep 10
+
 # Fix permissions so Keycloak user can write to database
 echo -e "${CYAN}🔧 Fixing database permissions...${NC}"
 docker exec $CONTAINER_NAME chown -R keycloak:root /opt/keycloak/data
 docker exec $CONTAINER_NAME chmod -R u+w /opt/keycloak/data
 
-echo -e "${GREEN}✅ Database restored with correct permissions${NC}"
+echo -e "${GREEN}✅ Permissions fixed${NC}"
 
-# Start container with restored data
-echo -e "${CYAN}🚀 Starting container with restored data...${NC}"
-docker start $CONTAINER_NAME
+# Restart container to apply all changes
+echo -e "${CYAN}🔄 Restarting container...${NC}"
+docker restart $CONTAINER_NAME
 
 echo -e "${YELLOW}⏳ Waiting for Keycloak to start (60 seconds)...${NC}"
 sleep 60

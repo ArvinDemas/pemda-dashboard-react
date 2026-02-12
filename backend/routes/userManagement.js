@@ -17,6 +17,9 @@ router.use(requireAdmin);
 // GET /api/admin/users - List all users with identity provider info
 router.get('/users', userManagementController.listUsers);
 
+// POST /api/admin/users - Create new user
+router.post('/users', userManagementController.createUser);
+
 // GET /api/admin/users/:id - Get single user details
 router.get('/users/:id', userManagementController.getUserDetails);
 

@@ -5,7 +5,7 @@
 import Keycloak from 'keycloak-js';
 
 const keycloakConfig = {
-  url: 'http://10.7.183.128:8080',
+  url: `http://${window.location.hostname}:8080`,
   realm: 'Jogja-SSO',
   clientId: 'pemda-dashboard'
 };
