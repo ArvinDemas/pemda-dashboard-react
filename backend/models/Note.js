@@ -1,71 +1,54 @@
 /**
- * Note Model
+ * Note Model (Sequelize)
  * User notes with categories and timestamps
  */
 
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../config/database');
 
-const noteSchema = new mongoose.Schema({
+const Note = sequelize.define('Note', {
+    id: {
+        type: DataTypes.INTEGER,
+        primaryKey: true,
+        autoIncrement: true
+    },
     userId: {
-        type: String,
-        required: [true, 'User ID is required'],
-        index: true
+        type: DataTypes.STRING,
+        allowNull: false,
+        field: 'user_id'
     },
     title: {
-        type: String,
-        required: [true, 'Title is required'],
-        trim: true,
-        maxlength: [200, 'Title cannot exceed 200 characters']
+        type: DataTypes.STRING(200),
+        allowNull: false,
+        validate: {
+            notEmpty: true
+        }
     },
     content: {
-        type: String,
-        required: false,
-        maxlength: [50000, 'Content cannot exceed 50000 characters'] // Increased for HTML tags
+        type: DataTypes.TEXT,
+        allowNull: true
     },
     category: {
-        type: String,
-        enum: ['Personal', 'Work', 'Important', 'Ideas', 'Other'],
-        default: 'Other',
-        index: true
+        type: DataTypes.ENUM('Personal', 'Work', 'Important', 'Ideas', 'Other'),
+        defaultValue: 'Other'
     },
-    tags: [{
-        type: String,
-        trim: true
-    }],
+    tags: {
+        type: DataTypes.ARRAY(DataTypes.STRING),
+        defaultValue: []
+    },
     isPinned: {
-        type: Boolean,
-        default: false
-    },
-    createdAt: {
-        type: Date,
-        default: Date.now,
-        index: true
-    },
-    updatedAt: {
-        type: Date,
-        default: Date.now
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+        field: 'is_pinned'
     }
 }, {
-    timestamps: true
+    tableName: 'notes',
+    timestamps: true,
+    indexes: [
+        { fields: ['user_id'] },
+        { fields: ['user_id', 'created_at'] },
+        { fields: ['user_id', 'category'] }
+    ]
 });
 
-// Compound index for efficient querying
-noteSchema.index({ userId: 1, createdAt: -1 });
-noteSchema.index({ userId: 1, category: 1 });
-
-// Update the updatedAt field before saving
-noteSchema.pre('save', function (next) {
-    this.updatedAt = Date.now();
-    next();
-});
-
-// Virtual for formatted date
-noteSchema.virtual('formattedDate').get(function () {
-    return this.createdAt.toLocaleDateString('id-ID', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-    });
-});
-
-module.exports = mongoose.model('Note', noteSchema);
+module.exports = Note;

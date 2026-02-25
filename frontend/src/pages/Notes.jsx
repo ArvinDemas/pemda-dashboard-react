@@ -109,7 +109,7 @@ const Notes = () => {
       };
 
       if (editingNote) {
-        await notesService.updateNote(editingNote._id, noteData);
+        await notesService.updateNote(editingNote.id, noteData);
         showSuccess('Note updated successfully');
       } else {
         await notesService.createNote(noteData);
@@ -138,7 +138,7 @@ const Notes = () => {
 
   const handleDeleteNote = async () => {
     try {
-      await notesService.deleteNote(deleteConfirm._id);
+      await notesService.deleteNote(deleteConfirm.id);
       showSuccess('Note deleted successfully');
       setDeleteConfirm(null);
       loadNotes();
@@ -290,7 +290,7 @@ const Notes = () => {
       {/* Notes Grid - Card Layout */}
       <div className="notes-grid">
         {notes.map(note => (
-          <div key={note._id} className="note-card">
+          <div key={note.id} className="note-card">
             <div className="note-card-header">
               <span
                 className="note-category-badge"

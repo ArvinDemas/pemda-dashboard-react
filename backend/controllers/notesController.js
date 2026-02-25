@@ -1,9 +1,10 @@
 /**
  * Notes Controller
- * CRUD operations for user notes
+ * CRUD operations for user notes (Sequelize)
  */
 
 const Note = require('../models/Note');
+const { Op, fn, col } = require('sequelize');
 
 /**
  * Get all notes for authenticated user
@@ -14,32 +15,28 @@ exports.getNotes = async (req, res) => {
         const userId = req.user.id;
         const { page = 1, limit = 20, category, search } = req.query;
 
-        const query = { userId };
+        const where = { userId };
 
-        // Filter by category if provided
         if (category && category !== 'all') {
-            query.category = category;
+            where.category = category;
         }
 
-        // Search in title and content if provided
         if (search) {
-            query.$or = [
-                { title: { $regex: search, $options: 'i' } },
-                { content: { $regex: search, $options: 'i' } }
+            where[Op.or] = [
+                { title: { [Op.iLike]: `%${search}%` } },
+                { content: { [Op.iLike]: `%${search}%` } }
             ];
         }
 
-        const skip = (parseInt(page) - 1) * parseInt(limit);
+        const offset = (parseInt(page) - 1) * parseInt(limit);
 
-        const [notes, total] = await Promise.all([
-            Note.find(query)
-                .sort({ isPinned: -1, updatedAt: -1 }) // Pinned notes first
-                .skip(skip)
-                .limit(parseInt(limit))
-                .select('-__v')
-                .lean(),
-            Note.countDocuments(query)
-        ]);
+        const { rows: notes, count: total } = await Note.findAndCountAll({
+            where,
+            order: [['isPinned', 'DESC'], ['updatedAt', 'DESC']],
+            offset,
+            limit: parseInt(limit),
+            raw: true
+        });
 
         res.json({
             notes,
@@ -68,7 +65,7 @@ exports.getNoteById = async (req, res) => {
         const { id } = req.params;
         const userId = req.user.id;
 
-        const note = await Note.findOne({ _id: id, userId }).select('-__v');
+        const note = await Note.findOne({ where: { id, userId } });
 
         if (!note) {
             return res.status(404).json({
@@ -96,7 +93,6 @@ exports.createNote = async (req, res) => {
         const userId = req.user.id;
         const { title, content, category, tags, isPinned } = req.body;
 
-        // Validation
         if (!title || !content) {
             return res.status(400).json({
                 error: 'Bad Request',
@@ -104,16 +100,14 @@ exports.createNote = async (req, res) => {
             });
         }
 
-        const note = new Note({
+        const note = await Note.create({
             userId,
             title: title.trim(),
             content: content.trim(),
-            category: category || 'other',
+            category: category || 'Other',
             tags: tags || [],
             isPinned: isPinned || false
         });
-
-        await note.save();
 
         res.status(201).json({
             message: 'Note created successfully',
@@ -122,7 +116,7 @@ exports.createNote = async (req, res) => {
     } catch (error) {
         console.error('Create note error:', error);
 
-        if (error.name === 'ValidationError') {
+        if (error.name === 'SequelizeValidationError') {
             return res.status(400).json({
                 error: 'Validation Error',
                 message: error.message
@@ -146,8 +140,7 @@ exports.updateNote = async (req, res) => {
         const userId = req.user.id;
         const { title, content, category, tags, isPinned } = req.body;
 
-        // Find note and verify ownership
-        const note = await Note.findOne({ _id: id, userId });
+        const note = await Note.findOne({ where: { id, userId } });
 
         if (!note) {
             return res.status(404).json({
@@ -156,7 +149,6 @@ exports.updateNote = async (req, res) => {
             });
         }
 
-        // Update fields
         if (title !== undefined) note.title = title.trim();
         if (content !== undefined) note.content = content.trim();
         if (category !== undefined) note.category = category;
@@ -172,7 +164,7 @@ exports.updateNote = async (req, res) => {
     } catch (error) {
         console.error('Update note error:', error);
 
-        if (error.name === 'ValidationError') {
+        if (error.name === 'SequelizeValidationError') {
             return res.status(400).json({
                 error: 'Validation Error',
                 message: error.message
@@ -195,7 +187,7 @@ exports.deleteNote = async (req, res) => {
         const { id } = req.params;
         const userId = req.user.id;
 
-        const note = await Note.findOneAndDelete({ _id: id, userId });
+        const note = await Note.findOne({ where: { id, userId } });
 
         if (!note) {
             return res.status(404).json({
@@ -203,6 +195,8 @@ exports.deleteNote = async (req, res) => {
                 message: 'Note not found'
             });
         }
+
+        await note.destroy();
 
         res.json({
             message: 'Note deleted successfully'
@@ -225,32 +219,30 @@ exports.getNotesStats = async (req, res) => {
         const userId = req.user.id;
         console.log('📊 [Notes Stats] Fetching for userId:', userId);
 
-        const stats = await Note.aggregate([
-            { $match: { userId } },
-            {
-                $group: {
-                    _id: '$category',
-                    count: { $sum: 1 }
-                }
-            }
-        ]);
+        const stats = await Note.findAll({
+            where: { userId },
+            attributes: [
+                'category',
+                [fn('COUNT', col('id')), 'count']
+            ],
+            group: ['category'],
+            raw: true
+        });
 
-        const total = await Note.countDocuments({ userId });
+        const total = await Note.count({ where: { userId } });
         console.log('📊 [Notes Stats] Total notes found:', total, '| By category:', JSON.stringify(stats));
 
-        // Return safe default values even when empty
         res.json({
             total: total || 0,
             byCategory: stats && stats.length > 0
                 ? stats.reduce((acc, item) => {
-                    acc[item._id] = item.count;
+                    acc[item.category] = parseInt(item.count);
                     return acc;
                 }, {})
-                : {}  // Empty object when no notes
+                : {}
         });
     } catch (error) {
         console.error('❌ [Notes Stats] Error:', error);
-        // Return safe defaults on error too
         res.status(500).json({
             total: 0,
             byCategory: {},

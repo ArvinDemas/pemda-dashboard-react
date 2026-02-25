@@ -9,7 +9,7 @@ const Document = require('../models/Document');
 const Note = require('../models/Note');
 
 const KEYCLOAK_URL = process.env.KEYCLOAK_URL || 'http://localhost:8080';
-const REALM = process.env.KEYCLOAK_REALM || 'Jogja-SSO';
+const REALM = process.env.KEYCLOAK_REALM || 'PemdaSSO';
 
 /**
  * Get Keycloak admin token
@@ -177,8 +177,8 @@ exports.getUserDetails = async (req, res) => {
 
         // Get user's documents and notes count from MongoDB
         const [documentCount, noteCount] = await Promise.all([
-            Document.countDocuments({ uploadedBy: id }).catch(() => 0),
-            Note.countDocuments({ userId: id }).catch(() => 0)
+            Document.count({ where: { userId: id } }).catch(() => 0),
+            Note.count({ where: { userId: id } }).catch(() => 0)
         ]);
 
         res.json({
@@ -313,7 +313,7 @@ exports.createUser = async (req, res) => {
 
         const adminToken = await getAdminToken();
 
-        // Step 1: Create user in Keycloak
+        // Step 1: Create user in Keycloak with CONFIGURE_TOTP required action
         const createResponse = await axios.post(
             `${KEYCLOAK_URL}/admin/realms/${REALM}/users`,
             {
@@ -323,6 +323,7 @@ exports.createUser = async (req, res) => {
                 lastName: (lastName || '').trim(),
                 enabled: enabled,
                 emailVerified: true,
+                requiredActions: ['CONFIGURE_TOTP']
             },
             {
                 headers: {
@@ -437,15 +438,15 @@ exports.deleteUser = async (req, res) => {
             console.warn('Could not fetch user details:', err.message);
         }
 
-        // Step 2: Delete all user's documents from MongoDB
+        // Step 2: Delete all user's documents from DB
         console.log('📄 Deleting user documents...');
-        const deletedDocs = await Document.deleteMany({ uploadedBy: id });
-        console.log(`✅ Deleted ${deletedDocs.deletedCount} documents`);
+        const deletedDocs = await Document.destroy({ where: { userId: id } });
+        console.log(`✅ Deleted ${deletedDocs} documents`);
 
-        // Step 3: Delete all user's notes from MongoDB
+        // Step 3: Delete all user's notes from DB
         console.log('📝 Deleting user notes...');
-        const deletedNotes = await Note.deleteMany({ userId: id });
-        console.log(`✅ Deleted ${deletedNotes.deletedCount} notes`);
+        const deletedNotes = await Note.destroy({ where: { userId: id } });
+        console.log(`✅ Deleted ${deletedNotes} notes`);
 
         // Step 4: Delete user from Keycloak
         console.log('👤 Deleting user from Keycloak...');
@@ -459,7 +460,7 @@ exports.deleteUser = async (req, res) => {
         );
 
         console.log('✅ User deleted successfully from Keycloak');
-        console.log(`📊 Cleanup summary - User: ${username}, Documents: ${deletedDocs.deletedCount}, Notes: ${deletedNotes.deletedCount}`);
+        console.log(`📊 Cleanup summary - User: ${username}, Documents: ${deletedDocs}, Notes: ${deletedNotes}`);
 
         res.json({
             success: true,
@@ -469,8 +470,8 @@ exports.deleteUser = async (req, res) => {
                 username: username
             },
             deletedData: {
-                documents: deletedDocs.deletedCount,
-                notes: deletedNotes.deletedCount
+                documents: deletedDocs,
+                notes: deletedNotes
             }
         });
 

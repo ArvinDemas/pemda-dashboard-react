@@ -36,7 +36,7 @@ const verifyKeycloakToken = async (req, res, next) => {
 
         // Get Keycloak public key for verification
         const keycloakUrl = process.env.KEYCLOAK_URL || 'http://10.7.183.46:8080';
-        const realm = process.env.KEYCLOAK_REALM || 'Jogja-SSO';
+        const realm = process.env.KEYCLOAK_REALM || 'PemdaSSO';
         const certsUrl = `${keycloakUrl}/realms/${realm}/protocol/openid-connect/certs`;
 
         // Fetch public keys (should be cached in production)

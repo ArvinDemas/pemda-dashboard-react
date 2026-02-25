@@ -61,7 +61,9 @@ router.post('/login', async (req, res) => {
 
         // Create LoginLog entry with correct schema
         const LoginLog = require('../models/LoginLog');
-        await LoginLog.create({
+        // Using Sequelize model - LoginLog.create() works the same way
+        // Non-blocking log creation
+        LoginLog.create({
             userId: userInfo.sub,
             action: 'LOGIN_SUCCESS',  // Required field
             ip: ipAddress,            // Required field (not ipAddress)
@@ -79,7 +81,7 @@ router.post('/login', async (req, res) => {
                     region: geo.region
                 } : {}
             }
-        });
+        }).catch(err => console.warn('⚠️ Login logging failed (non-critical):', err.message));
 
         console.log('✅ Login log created for:', userInfo.preferred_username);
 

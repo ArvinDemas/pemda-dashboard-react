@@ -1,20 +1,41 @@
 /**
  * PEMDA DIY Dashboard - Backend Server
- * Node.js + Express + Keycloak
+ * Node.js + Express + Keycloak + PostgreSQL + MinIO
  */
 
 const express = require('express');
 const cors = require('cors');
 const session = require('express-session');
-const connectDB = require('./config/database');
+const { connectDB, sequelize } = require('./config/database');
+const { initMinio } = require('./config/minio');
 require('dotenv').config();
+
+// Import models to ensure they are registered
+require('./models/index');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: function (origin, callback) {
+        // Allow requests with no origin (mobile apps, curl, etc.)
+        if (!origin) return callback(null, true);
+
+        // Allow any origin on port 3000 (frontend dev server)
+        // This prevents CORS issues when LAN IP changes
+        if (origin.endsWith(':3000')) {
+            return callback(null, true);
+        }
+
+        // Allow configured FRONTEND_URL
+        const allowedOrigin = process.env.FRONTEND_URL || 'http://localhost:3000';
+        if (origin === allowedOrigin) {
+            return callback(null, true);
+        }
+
+        callback(new Error('Not allowed by CORS'));
+    },
     credentials: true
 }));
 
@@ -33,14 +54,14 @@ app.use(session({
     }
 }));
 
-// Static files for uploads
+// Static files for uploads (legacy - new uploads go to MinIO)
 app.use('/uploads', express.static('uploads'));
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/profile', require('./routes/profile'));
 app.use('/api/users', require('./routes/users'));
-app.use('/api/admin', require('./routes/userManagement')); // Admin routes mounted at /api/admin
+app.use('/api/admin', require('./routes/userManagement'));
 app.use('/api/documents', require('./routes/documents'));
 app.use('/api/notes', require('./routes/notes'));
 app.use('/api/sessions', require('./routes/sessions'));
@@ -49,9 +70,14 @@ app.use('/api/logs', require('./routes/logs'));
 console.log('✅ All API routes registered successfully');
 
 // Health check
-app.get('/health', (req, res) => {
-    const mongoose = require('mongoose');
-    const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+app.get('/health', async (req, res) => {
+    let dbStatus = 'disconnected';
+    try {
+        await sequelize.authenticate();
+        dbStatus = 'connected';
+    } catch (e) {
+        dbStatus = 'disconnected';
+    }
 
     res.json({
         status: 'OK',
@@ -75,7 +101,7 @@ app.use((req, res) => {
     res.status(404).json({ error: 'Endpoint not found' });
 });
 
-// Start server immediately (MongoDB not required for auth)
+// Start server
 app.listen(PORT, () => {
     console.log(`
     ╔════════════════════════════════════════╗
@@ -87,10 +113,16 @@ app.listen(PORT, () => {
     ╚════════════════════════════════════════╝
     `);
 
-    // Try MongoDB connection (non-blocking)
+    // Connect to PostgreSQL (non-blocking)
     connectDB().catch(err => {
-        console.warn('\n⚠️  MongoDB not connected - database features disabled');
+        console.warn('\n⚠️  PostgreSQL not connected - database features disabled');
         console.warn('   Auth endpoints will work via Keycloak proxy\n');
+    });
+
+    // Initialize MinIO (non-blocking)
+    initMinio().catch(err => {
+        console.warn('\n⚠️  MinIO not connected - file upload disabled');
+        console.warn('   Error:', err.message, '\n');
     });
 });
 

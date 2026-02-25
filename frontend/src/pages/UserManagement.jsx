@@ -29,7 +29,10 @@ const UserManagement = () => {
     const [selectedUser, setSelectedUser] = useState(null);
     const [editingUser, setEditingUser] = useState(null);
     const [newPassword, setNewPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
     const [showCreatePassword, setShowCreatePassword] = useState(false);
+    const [showResetPassword, setShowResetPassword] = useState(false);
+    const [showConfirmResetPassword, setShowConfirmResetPassword] = useState(false);
     const [creating, setCreating] = useState(false);
     const [createForm, setCreateForm] = useState({
         username: '',
@@ -69,6 +72,16 @@ const UserManagement = () => {
         { label: 'Huruf kecil (a-z)', met: /[a-z]/.test(createForm.password) },
         { label: 'Angka (0-9)', met: /\d/.test(createForm.password) },
         { label: 'Karakter khusus (!@#$...)', met: /[!@#$%^&*(),.?":{}|<>]/.test(createForm.password) },
+    ];
+
+    // Password strength for reset password form
+    const resetPasswordStrength = getPasswordStrength(newPassword);
+    const resetRequirements = [
+        { label: 'Minimal 8 karakter', met: newPassword.length >= 8 },
+        { label: 'Huruf besar (A-Z)', met: /[A-Z]/.test(newPassword) },
+        { label: 'Huruf kecil (a-z)', met: /[a-z]/.test(newPassword) },
+        { label: 'Angka (0-9)', met: /\d/.test(newPassword) },
+        { label: 'Karakter khusus (!@#$...)', met: /[!@#$%^&*(),.?":{}|<>]/.test(newPassword) },
     ];
 
     useEffect(() => {
@@ -121,6 +134,16 @@ const UserManagement = () => {
             return;
         }
 
+        if (resetPasswordStrength.score < 4) {
+            toast.error('Password belum cukup kuat (minimal 4 dari 5 kriteria)');
+            return;
+        }
+
+        if (newPassword !== confirmPassword) {
+            toast.error('Konfirmasi password tidak cocok');
+            return;
+        }
+
         try {
             await api.put(`/api/admin/users/${selectedUser.id}/reset-password`, {
                 newPassword: newPassword
@@ -128,6 +151,7 @@ const UserManagement = () => {
             toast.success(`Password untuk ${selectedUser.username} berhasil direset`);
             setShowResetPasswordModal(false);
             setNewPassword('');
+            setConfirmPassword('');
             setSelectedUser(null);
         } catch (error) {
             toast.error('Gagal reset password');
@@ -389,7 +413,7 @@ const UserManagement = () => {
             {/* Reset Password Modal */}
             {showResetPasswordModal && selectedUser && (
                 <div className="modal-overlay" onClick={() => setShowResetPasswordModal(false)}>
-                    <div className="modal-content" style={{ maxWidth: '400px' }} onClick={(e) => e.stopPropagation()}>
+                    <div className="modal-content" style={{ maxWidth: '480px' }} onClick={(e) => e.stopPropagation()}>
                         <div className="modal-header">
                             <h3>Reset Password</h3>
                             <button className="icon-btn" onClick={() => setShowResetPasswordModal(false)}>
@@ -402,30 +426,120 @@ const UserManagement = () => {
                                 Atur password baru untuk <strong>{selectedUser.username}</strong>
                             </p>
 
-                            <div className="form-group">
-                                <label>Password Baru</label>
-                                <input
-                                    type="password"
-                                    className="form-input"
-                                    placeholder="Minimal 8 karakter"
-                                    value={newPassword}
-                                    onChange={(e) => setNewPassword(e.target.value)}
-                                    autoFocus
-                                />
+                            {/* New Password Field */}
+                            <div className="form-group" style={{ marginBottom: '16px' }}>
+                                <label>Password Baru *</label>
+                                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                                    <input
+                                        type={showResetPassword ? 'text' : 'password'}
+                                        className="form-input"
+                                        style={{ paddingRight: '48px', width: '100%' }}
+                                        placeholder="Minimal 8 karakter"
+                                        value={newPassword}
+                                        onChange={(e) => setNewPassword(e.target.value)}
+                                        autoFocus
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowResetPassword(!showResetPassword)}
+                                        style={{ position: 'absolute', right: '12px', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '4px', display: 'flex' }}
+                                    >
+                                        {showResetPassword ? <EyeSlash size={18} /> : <Eye size={18} />}
+                                    </button>
+                                </div>
+
+                                {/* Strength Bar */}
+                                {newPassword && (
+                                    <div style={{ marginTop: '10px' }}>
+                                        <div style={{ height: '6px', background: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
+                                            <div style={{
+                                                width: `${(resetPasswordStrength.score / 5) * 100}%`,
+                                                height: '100%',
+                                                backgroundColor: resetPasswordStrength.color,
+                                                borderRadius: '3px',
+                                                transition: 'width 0.3s ease, background-color 0.3s ease',
+                                            }} />
+                                        </div>
+                                        <span style={{ fontSize: '0.85rem', color: resetPasswordStrength.color, fontWeight: '600', marginTop: '4px', display: 'block' }}>
+                                            {resetPasswordStrength.label}
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* Requirements */}
+                                {newPassword && (
+                                    <div style={{ marginTop: '12px', display: 'grid', gap: '4px' }}>
+                                        {resetRequirements.map((req, i) => (
+                                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem' }}>
+                                                {req.met
+                                                    ? <CheckCircle size={16} weight="fill" style={{ color: '#10b981', flexShrink: 0 }} />
+                                                    : <XCircle size={16} weight="fill" style={{ color: '#cbd5e1', flexShrink: 0 }} />}
+                                                <span style={{ color: req.met ? '#10b981' : '#94a3b8' }}>{req.label}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Confirm Password Field */}
+                            <div className="form-group" style={{ marginBottom: '16px' }}>
+                                <label>Konfirmasi Password *</label>
+                                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                                    <input
+                                        type={showConfirmResetPassword ? 'text' : 'password'}
+                                        className="form-input"
+                                        style={{ paddingRight: '48px', width: '100%' }}
+                                        placeholder="Ulangi password baru"
+                                        value={confirmPassword}
+                                        onChange={(e) => setConfirmPassword(e.target.value)}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowConfirmResetPassword(!showConfirmResetPassword)}
+                                        style={{ position: 'absolute', right: '12px', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '4px', display: 'flex' }}
+                                    >
+                                        {showConfirmResetPassword ? <EyeSlash size={18} /> : <Eye size={18} />}
+                                    </button>
+                                </div>
+                                {confirmPassword && newPassword !== confirmPassword && (
+                                    <span style={{ fontSize: '0.85rem', color: '#ef4444', marginTop: '6px', display: 'block' }}>
+                                        Password tidak cocok
+                                    </span>
+                                )}
+                                {confirmPassword && newPassword === confirmPassword && confirmPassword.length > 0 && (
+                                    <span style={{ fontSize: '0.85rem', color: '#10b981', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <CheckCircle size={16} weight="fill" /> Password cocok
+                                    </span>
+                                )}
                             </div>
 
                             <div className="modal-actions" style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
                                 <button
                                     className="btn-secondary"
                                     style={{ padding: '10px 20px', borderRadius: '8px', border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer' }}
-                                    onClick={() => setShowResetPasswordModal(false)}
+                                    onClick={() => { setShowResetPasswordModal(false); setNewPassword(''); setConfirmPassword(''); }}
                                 >
                                     Batal
                                 </button>
                                 <button
-                                    style={{ padding: '10px 20px', borderRadius: '8px', border: 'none', background: '#f59e0b', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
+                                    style={{
+                                        padding: '10px 20px',
+                                        borderRadius: '8px',
+                                        border: 'none',
+                                        background: (resetPasswordStrength.score < 4 || newPassword !== confirmPassword || !confirmPassword)
+                                            ? '#94a3b8'
+                                            : '#f59e0b',
+                                        color: 'white',
+                                        cursor: (resetPasswordStrength.score < 4 || newPassword !== confirmPassword || !confirmPassword)
+                                            ? 'not-allowed'
+                                            : 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        fontWeight: '600'
+                                    }}
                                     onClick={handleResetPassword}
-                                    disabled={!newPassword || newPassword.length < 8}
+                                    disabled={resetPasswordStrength.score < 4 || newPassword !== confirmPassword || !confirmPassword}
                                 >
                                     <Key size={18} />
                                     Reset Password

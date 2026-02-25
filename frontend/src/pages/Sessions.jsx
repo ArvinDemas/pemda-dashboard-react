@@ -43,11 +43,26 @@ const Sessions = () => {
       showSuccess('Session terminated successfully');
       setTerminateConfirm(null);
 
-      // If terminating current session, user will be logged out
+      // If terminating current session, perform full logout
       if (terminateConfirm.current) {
+        const refreshToken = localStorage.getItem('refresh_token');
+        localStorage.clear();
+
+        const apiUrl = window.location.hostname === 'localhost'
+          ? 'http://localhost:5000'
+          : `http://${window.location.hostname}:5000`;
+
+        if (refreshToken) {
+          fetch(`${apiUrl}/api/auth/logout`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refresh_token: refreshToken })
+          }).catch(() => { });
+        }
+
         setTimeout(() => {
-          window.location.href = '/';
-        }, 1500);
+          window.location.href = '/logout-success';
+        }, 1000);
       } else {
         loadSessions();
       }
@@ -56,13 +71,32 @@ const Sessions = () => {
     }
   };
 
-  // Terminate all other sessions
+  // Terminate all sessions (including current)
   const handleTerminateAllSessions = async () => {
     try {
       await sessionsService.terminateAllSessions();
-      showSuccess('All other sessions terminated');
+      showSuccess('Semua sesi berhasil diterminasi');
       setTerminateAllConfirm(false);
-      loadSessions();
+
+      // Also logout current user since all sessions are terminated
+      const refreshToken = localStorage.getItem('refresh_token');
+      localStorage.clear();
+
+      const apiUrl = window.location.hostname === 'localhost'
+        ? 'http://localhost:5000'
+        : `http://${window.location.hostname}:5000`;
+
+      if (refreshToken) {
+        fetch(`${apiUrl}/api/auth/logout`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: refreshToken })
+        }).catch(() => { });
+      }
+
+      setTimeout(() => {
+        window.location.href = '/logout-success';
+      }, 1000);
     } catch (error) {
       showError('Failed to terminate sessions');
     }
@@ -109,11 +143,11 @@ const Sessions = () => {
         </div>
         {sessions.length > 1 && (
           <button
-            className="btn-danger"
+            className="btn-danger-outline"
             onClick={() => setTerminateAllConfirm(true)}
           >
             <SignOut size={20} weight="bold" />
-            <span>Terminate All Others</span>
+            <span>Terminate Semua Sesi</span>
           </button>
         )}
       </div>

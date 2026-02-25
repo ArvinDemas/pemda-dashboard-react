@@ -150,8 +150,8 @@ function main() {
 
             console.log(`${colors.yellow}⚠️  IMPORTANT: Update Keycloak Configuration${colors.reset}\n`);
             console.log(`   1. Open Keycloak Admin Console:`);
-            console.log(`      ${colors.blue}http://10.7.183.46:8080/admin${colors.reset}\n`);
-            console.log(`   2. Navigate to: Jogja-SSO realm → Clients → pemda-dashboard\n`);
+            console.log(`      ${colors.blue}http://${newIp}:8080/admin${colors.reset}\n`);
+            console.log(`   2. Navigate to: PemdaSSO realm → Clients → pemda-dashboard\n`);
             console.log(`   3. Update the following fields:\n`);
             console.log(`      ${colors.bright}Root URL:${colors.reset}`);
             console.log(`      http://${newIp}:3000\n`);

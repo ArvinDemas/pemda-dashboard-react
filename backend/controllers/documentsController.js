@@ -1,16 +1,17 @@
 /**
  * Documents Controller
- * File upload, management, and download with security
- * Following file-uploads skill: magic byte verification, size limits, sanitization
+ * File upload to MinIO, management, and download with security
  */
 
 const Document = require('../models/Document');
+const { minioClient, BUCKET_NAME } = require('../config/minio');
 const path = require('path');
 const fs = require('fs').promises;
 const crypto = require('crypto');
+const { Op, fn, col, literal } = require('sequelize');
 
 /**
- * Upload document
+ * Upload document → MinIO → save URL in Postgres
  * POST /api/documents/upload
  */
 exports.uploadDocument = async (req, res) => {
@@ -23,55 +24,56 @@ exports.uploadDocument = async (req, res) => {
         }
 
         const userId = req.user.id;
-        const { description } = req.body;
+        const { description, parentFolderId } = req.body;
 
-        // File has already been validated by middleware
-        // - Magic bytes checked
-        // - Size validated
-        // - Filename sanitized
-
-        // Generate UUID filename to prevent conflicts and path traversal
+        // Generate UUID filename
         const fileExt = path.extname(req.file.sanitizedOriginalName || req.file.originalname);
         const uniqueFilename = `${crypto.randomUUID()}${fileExt}`;
+        const objectName = `${userId}/${uniqueFilename}`;
 
-        // Create user-specific directory
-        const userUploadsDir = path.join(__dirname, '..', 'uploads', userId);
-        await fs.mkdir(userUploadsDir, { recursive: true });
+        // Upload to MinIO
+        await minioClient.fPutObject(BUCKET_NAME, objectName, req.file.path, {
+            'Content-Type': req.file.detectedMimeType || req.file.mimetype,
+            'X-Original-Name': encodeURIComponent(req.file.sanitizedOriginalName || req.file.originalname)
+        });
 
-        // Move file from temp to final location
-        const finalPath = path.join(userUploadsDir, uniqueFilename);
-        await fs.rename(req.file.path, finalPath);
+        // Build the file URL
+        const minioEndpoint = process.env.MINIO_ENDPOINT || 'localhost';
+        const minioPort = process.env.MINIO_PORT || '9000';
+        const fileUrl = `http://${minioEndpoint}:${minioPort}/${BUCKET_NAME}/${objectName}`;
 
-        // Create document record
-        const document = new Document({
+        // Create document record in Postgres
+        const document = await Document.create({
             userId,
+            type: 'file',
             filename: uniqueFilename,
             originalName: req.file.sanitizedOriginalName || req.file.originalname,
             mimeType: req.file.detectedMimeType || req.file.mimetype,
             size: req.file.size,
-            path: finalPath,
-            url: `/uploads/${userId}/${uniqueFilename}`,
-            verified: true, // Magic bytes were checked
-            description: description || ''
+            fileUrl,
+            verified: true,
+            description: description || '',
+            parentFolderId: parentFolderId || null
         });
 
-        await document.save();
+        // Clean up temp file
+        await fs.unlink(req.file.path).catch(() => { });
 
         res.status(201).json({
             message: 'File uploaded successfully',
             document: {
-                id: document._id,
+                id: document.id,
                 originalName: document.originalName,
-                size: document.readableSize,
+                size: Document.formatBytes(document.size),
                 mimeType: document.mimeType,
                 uploadedAt: document.uploadedAt,
-                url: document.url
+                url: document.fileUrl
             }
         });
     } catch (error) {
         console.error('Upload document error:', error);
 
-        // Clean up file on error
+        // Clean up temp file on error
         if (req.file && req.file.path) {
             await fs.unlink(req.file.path).catch(() => { });
         }
@@ -92,32 +94,28 @@ exports.getDocuments = async (req, res) => {
         const userId = req.user.id;
         const { page = 1, limit = 20, search } = req.query;
 
-        const query = { userId };
+        const where = { userId };
 
-        // Search in filename and description
         if (search) {
-            query.$or = [
-                { originalName: { $regex: search, $options: 'i' } },
-                { description: { $regex: search, $options: 'i' } }
+            where[Op.or] = [
+                { originalName: { [Op.iLike]: `%${search}%` } },
+                { description: { [Op.iLike]: `%${search}%` } }
             ];
         }
 
-        const skip = (parseInt(page) - 1) * parseInt(limit);
+        const offset = (parseInt(page) - 1) * parseInt(limit);
 
-        const [documents, total] = await Promise.all([
-            Document.find(query)
-                .sort({ uploadedAt: -1 })
-                .skip(skip)
-                .limit(parseInt(limit))
-                .select('-path -__v') // Don't expose file system path
-                .lean(),
-            Document.countDocuments(query)
-        ]);
+        const { rows: documents, count: total } = await Document.findAndCountAll({
+            where,
+            order: [['uploadedAt', 'DESC']],
+            offset,
+            limit: parseInt(limit),
+            raw: true
+        });
 
-        // Add readable size to response
         const documentsWithSize = documents.map(doc => ({
             ...doc,
-            readableSize: formatBytes(doc.size)
+            readableSize: Document.formatBytes(doc.size)
         }));
 
         res.json({
@@ -139,7 +137,7 @@ exports.getDocuments = async (req, res) => {
 };
 
 /**
- * Download document
+ * Download document (proxy from MinIO)
  * GET /api/documents/:id/download
  */
 exports.downloadDocument = async (req, res) => {
@@ -147,7 +145,7 @@ exports.downloadDocument = async (req, res) => {
         const { id } = req.params;
         const userId = req.user.id;
 
-        const document = await Document.findOne({ _id: id, userId });
+        const document = await Document.findOne({ where: { id, userId } });
 
         if (!document) {
             return res.status(404).json({
@@ -156,27 +154,19 @@ exports.downloadDocument = async (req, res) => {
             });
         }
 
-        // Check if file exists
-        try {
-            await fs.access(document.path);
-        } catch (err) {
-            return res.status(404).json({
-                error: 'Not Found',
-                message: 'File not found on server'
-            });
-        }
+        const objectName = `${userId}/${document.filename}`;
 
-        // Set headers for download
+        // Set download headers
         res.setHeader('Content-Type', document.mimeType);
         res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(document.originalName)}"`);
-        res.setHeader('Content-Length', document.size);
+        if (document.size) res.setHeader('Content-Length', document.size);
 
-        // Stream file to response
-        const fileStream = require('fs').createReadStream(document.path);
-        fileStream.pipe(res);
+        // Stream from MinIO
+        const stream = await minioClient.getObject(BUCKET_NAME, objectName);
+        stream.pipe(res);
 
-        fileStream.on('error', (error) => {
-            console.error('File stream error:', error);
+        stream.on('error', (error) => {
+            console.error('MinIO stream error:', error);
             if (!res.headersSent) {
                 res.status(500).json({
                     error: 'Internal Server Error',
@@ -202,7 +192,7 @@ exports.deleteDocument = async (req, res) => {
         const { id } = req.params;
         const userId = req.user.id;
 
-        const document = await Document.findOne({ _id: id, userId });
+        const document = await Document.findOne({ where: { id, userId } });
 
         if (!document) {
             return res.status(404).json({
@@ -211,16 +201,16 @@ exports.deleteDocument = async (req, res) => {
             });
         }
 
-        // Delete file from filesystem
-        try {
-            await fs.unlink(document.path);
-        } catch (err) {
-            console.warn('Failed to delete file:', err.message);
-            // Continue anyway to remove database record
+        // Delete from MinIO if it's a file
+        if (document.type === 'file' && document.filename) {
+            const objectName = `${userId}/${document.filename}`;
+            await minioClient.removeObject(BUCKET_NAME, objectName).catch(err => {
+                console.warn('Failed to delete file from MinIO:', err.message);
+            });
         }
 
         // Delete database record
-        await Document.deleteOne({ _id: id });
+        await document.destroy();
 
         res.json({
             message: 'Document deleted successfully'
@@ -235,7 +225,7 @@ exports.deleteDocument = async (req, res) => {
 };
 
 /**
- * Get documents stats (updated to exclude folders from stats)
+ * Get documents stats (exclude folders)
  * GET /api/documents/stats
  */
 exports.getDocumentsStats = async (req, res) => {
@@ -243,40 +233,38 @@ exports.getDocumentsStats = async (req, res) => {
         const userId = req.user.id;
         console.log('📊 [Docs Stats] Fetching for userId:', userId);
 
-        const stats = await Document.aggregate([
-            { $match: { userId, type: 'file' } }, // Only count files, not folders
-            {
-                $group: {
-                    _id: '$mimeType',
-                    count: { $sum: 1 },
-                    totalSize: { $sum: '$size' }
-                }
-            }
-        ]);
+        const stats = await Document.findAll({
+            where: { userId, type: 'file' },
+            attributes: [
+                'mimeType',
+                [fn('COUNT', col('id')), 'count'],
+                [fn('SUM', col('size')), 'totalSize']
+            ],
+            group: ['mimeType'],
+            raw: true
+        });
 
-        const total = await Document.countDocuments({ userId, type: 'file' });
+        const total = await Document.count({ where: { userId, type: 'file' } });
         const totalSize = stats && stats.length > 0
-            ? stats.reduce((sum, item) => sum + item.totalSize, 0)
+            ? stats.reduce((sum, item) => sum + parseInt(item.totalSize || 0), 0)
             : 0;
 
         console.log('📊 [Docs Stats] Total docs found:', total, '| Total size:', totalSize);
 
-        // Return safe defaults even when empty
         res.json({
             total: total || 0,
-            totalSize: formatBytes(totalSize),
-            totalDocuments: total || 0, // Add this for dashboard compatibility
+            totalSize: Document.formatBytes(totalSize),
+            totalDocuments: total || 0,
             byType: stats && stats.length > 0
                 ? stats.map(item => ({
-                    type: item._id,
-                    count: item.count,
-                    size: formatBytes(item.totalSize)
+                    type: item.mimeType,
+                    count: parseInt(item.count),
+                    size: Document.formatBytes(parseInt(item.totalSize || 0))
                 }))
-                : []  // Empty array when no documents
+                : []
         });
     } catch (error) {
         console.error('❌ [Docs Stats] Error:', error);
-        // Return safe defaults on error
         res.status(500).json({
             total: 0,
             totalSize: '0 Bytes',
@@ -305,10 +293,12 @@ exports.createFolder = async (req, res) => {
 
         // Check if folder with same name exists in same parent
         const existingFolder = await Document.findOne({
-            userId,
-            originalName: name.trim(),
-            parentFolderId: parentFolderId || null,
-            type: 'folder'
+            where: {
+                userId,
+                originalName: name.trim(),
+                parentFolderId: parentFolderId || null,
+                type: 'folder'
+            }
         });
 
         if (existingFolder) {
@@ -318,14 +308,11 @@ exports.createFolder = async (req, res) => {
             });
         }
 
-        // If parentFolderId is provided, verify it exists and is a folder
+        // If parentFolderId provided, verify it exists
         if (parentFolderId) {
             const parentFolder = await Document.findOne({
-                _id: parentFolderId,
-                userId,
-                type: 'folder'
+                where: { id: parentFolderId, userId, type: 'folder' }
             });
-
             if (!parentFolder) {
                 return res.status(404).json({
                     error: 'Not Found',
@@ -334,7 +321,7 @@ exports.createFolder = async (req, res) => {
             }
         }
 
-        const folder = new Document({
+        const folder = await Document.create({
             userId,
             type: 'folder',
             originalName: name.trim(),
@@ -342,12 +329,10 @@ exports.createFolder = async (req, res) => {
             verified: true
         });
 
-        await folder.save();
-
         res.status(201).json({
             message: 'Folder created successfully',
             folder: {
-                id: folder._id,
+                id: folder.id,
                 name: folder.originalName,
                 type: folder.type,
                 parentFolderId: folder.parentFolderId,
@@ -365,7 +350,7 @@ exports.createFolder = async (req, res) => {
 
 /**
  * Get folder contents
- * GET /api/documents/folder/:folderId? (null/undefined for root)
+ * GET /api/documents/folder/:folderId
  */
 exports.getFolderContents = async (req, res) => {
     try {
@@ -373,17 +358,13 @@ exports.getFolderContents = async (req, res) => {
         const { folderId } = req.params;
         const { page = 1, limit = 50 } = req.query;
 
-        // Determine parent folder ID (null for root)
-        const parentFolderId = folderId && folderId !== 'root' ? folderId : null;
+        const parentFolderId = folderId && folderId !== 'root' ? parseInt(folderId) : null;
 
-        // If not root, verify folder exists
+        // Verify folder exists if not root
         if (parentFolderId) {
             const folder = await Document.findOne({
-                _id: parentFolderId,
-                userId,
-                type: 'folder'
+                where: { id: parentFolderId, userId, type: 'folder' }
             });
-
             if (!folder) {
                 return res.status(404).json({
                     error: 'Not Found',
@@ -392,38 +373,36 @@ exports.getFolderContents = async (req, res) => {
             }
         }
 
-        const skip = (parseInt(page) - 1) * parseInt(limit);
+        const offset = (parseInt(page) - 1) * parseInt(limit);
 
-        // Get all items in this folder
-        const [items, total] = await Promise.all([
-            Document.find({
-                userId,
-                parentFolderId
-            })
-                .sort({ type: -1, originalName: 1 }) // Folders first, then files, alphabetically
-                .skip(skip)
-                .limit(parseInt(limit))
-                .select('-path -__v')
-                .lean(),
-            Document.countDocuments({ userId, parentFolderId })
-        ]);
+        const { rows: items, count: total } = await Document.findAndCountAll({
+            where: { userId, parentFolderId },
+            order: [['type', 'DESC'], ['originalName', 'ASC']],
+            offset,
+            limit: parseInt(limit),
+            raw: true
+        });
 
-        // Build breadcrumb trail
         const breadcrumbs = await buildBreadcrumbs(userId, parentFolderId);
 
-        // Format items
         const formattedItems = items.map(item => ({
             ...item,
-            readableSize: item.type === 'file' ? formatBytes(item.size) : null,
+            readableSize: item.type === 'file' ? Document.formatBytes(item.size) : null,
             isFolder: item.type === 'folder'
         }));
+
+        let currentFolderName = 'Root';
+        if (parentFolderId) {
+            const cf = await Document.findByPk(parentFolderId);
+            currentFolderName = cf ? cf.originalName : 'Root';
+        }
 
         res.json({
             items: formattedItems,
             breadcrumbs,
             currentFolder: {
                 id: parentFolderId,
-                name: parentFolderId ? (await Document.findById(parentFolderId))?.originalName : 'Root'
+                name: currentFolderName
             },
             pagination: {
                 page: parseInt(page),
@@ -458,7 +437,7 @@ exports.renameItem = async (req, res) => {
             });
         }
 
-        const item = await Document.findOne({ _id: id, userId });
+        const item = await Document.findOne({ where: { id, userId } });
 
         if (!item) {
             return res.status(404).json({
@@ -467,13 +446,15 @@ exports.renameItem = async (req, res) => {
             });
         }
 
-        // Check for name conflicts in the same folder
+        // Check for name conflicts
         const conflict = await Document.findOne({
-            userId,
-            originalName: newName.trim(),
-            parentFolderId: item.parentFolderId,
-            type: item.type,
-            _id: { $ne: id }
+            where: {
+                userId,
+                originalName: newName.trim(),
+                parentFolderId: item.parentFolderId,
+                type: item.type,
+                id: { [Op.ne]: id }
+            }
         });
 
         if (conflict) {
@@ -489,7 +470,7 @@ exports.renameItem = async (req, res) => {
         res.json({
             message: `${item.type === 'folder' ? 'Folder' : 'File'} renamed successfully`,
             item: {
-                id: item._id,
+                id: item.id,
                 name: item.originalName,
                 type: item.type
             }
@@ -503,37 +484,22 @@ exports.renameItem = async (req, res) => {
     }
 };
 
-// Helper function to build breadcrumb trail
+// Helper: build breadcrumb trail
 async function buildBreadcrumbs(userId, folderId) {
     const breadcrumbs = [{ id: null, name: 'Root' }];
-
     if (!folderId) return breadcrumbs;
 
     let currentId = folderId;
     const chain = [];
 
-    // Walk up the folder tree
     while (currentId) {
         const folder = await Document.findOne({
-            _id: currentId,
-            userId,
-            type: 'folder'
+            where: { id: currentId, userId, type: 'folder' }
         });
-
         if (!folder) break;
-
-        chain.unshift({ id: folder._id.toString(), name: folder.originalName });
+        chain.unshift({ id: folder.id, name: folder.originalName });
         currentId = folder.parentFolderId;
     }
 
     return [...breadcrumbs, ...chain];
-}
-
-// Helper function to format bytes
-function formatBytes(bytes) {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
 }

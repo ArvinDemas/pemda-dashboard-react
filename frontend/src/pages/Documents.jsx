@@ -113,7 +113,7 @@ const Documents = () => {
     }
 
     try {
-      await documentsService.renameItem(renamingItem._id, newName);
+      await documentsService.renameItem(renamingItem.id, newName);
       showSuccess(`${renamingItem.type === 'folder' ? 'Folder' : 'File'} renamed successfully`);
       setShowRenameModal(false);
       setRenamingItem(null);
@@ -165,7 +165,7 @@ const Documents = () => {
   // File download
   const handleDownload = async (doc) => {
     try {
-      await documentsService.downloadDocument(doc._id, doc.originalName);
+      await documentsService.downloadDocument(doc.id, doc.originalName);
       showSuccess('Download started');
     } catch (error) {
       showError('Failed to download document');
@@ -175,7 +175,7 @@ const Documents = () => {
   // Delete item
   const handleDelete = async () => {
     try {
-      await documentsService.deleteDocument(deleteConfirm._id);
+      await documentsService.deleteDocument(deleteConfirm.id);
       showSuccess(`${deleteConfirm.type === 'folder' ? 'Folder' : 'Document'} deleted successfully`);
       setDeleteConfirm(null);
       loadFolderContents();
@@ -260,9 +260,9 @@ const Documents = () => {
       <div className="documents-grid">
         {items.map(item => (
           <div
-            key={item._id}
+            key={item.id}
             className="document-card"
-            onDoubleClick={() => item.type === 'folder' && handleFolderClick(item._id)}
+            onDoubleClick={() => item.type === 'folder' && handleFolderClick(item.id)}
           >
             <div className="document-card-icon">
               {getFileIcon(item)}
@@ -508,7 +508,7 @@ const Documents = () => {
             <div className="modal-body" style={{ padding: 0, maxHeight: '70vh', overflow: 'auto' }}>
               {(() => {
                 const ext = previewDocument.originalName?.split('.').pop()?.toLowerCase();
-                const url = getPreviewUrl(previewDocument._id);
+                const url = getPreviewUrl(previewDocument.id);
 
                 // Images
                 if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) {

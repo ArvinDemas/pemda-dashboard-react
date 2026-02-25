@@ -1,52 +1,51 @@
 /**
- * MongoDB Database Configuration
+ * PostgreSQL Database Configuration (Sequelize)
  * Handles connection, pooling, and error handling
  */
 
-const mongoose = require('mongoose');
+const { Sequelize } = require('sequelize');
+
+const DATABASE_URL = process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/pemda_dashboard';
+
+const sequelize = new Sequelize(DATABASE_URL, {
+    dialect: 'postgres',
+    logging: process.env.NODE_ENV === 'development' ? console.log : false,
+    pool: {
+        max: 10,
+        min: 0,
+        acquire: 30000,
+        idle: 10000
+    },
+    define: {
+        timestamps: true,
+        underscored: true // use snake_case column names
+    }
+});
 
 const connectDB = async () => {
     try {
-        const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/pemda_dashboard';
+        await sequelize.authenticate();
+        console.log('✅ PostgreSQL Connected');
+        console.log(`📊 Database: ${DATABASE_URL.split('/').pop().split('?')[0]}`);
 
-        const options = {
-            useNewUrlParser: true,
-            useUnifiedTopology: true,
-            maxPoolSize: 10,
-            serverSelectionTimeoutMS: 5000,
-            socketTimeoutMS: 45000,
-        };
+        // Sync models (alter in dev, do nothing in prod)
+        if (process.env.NODE_ENV !== 'production') {
+            await sequelize.sync({ alter: true });
+            console.log('✅ Database tables synced');
+        }
 
-        const conn = await mongoose.connect(mongoURI, options);
-
-        console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
-        console.log(`📊 Database: ${conn.connection.name}`);
-
-        // Connection events
-        mongoose.connection.on('error', (err) => {
-            console.error(`❌ MongoDB connection error: ${err}`);
-        });
-
-        mongoose.connection.on('disconnected', () => {
-            console.warn('⚠️  MongoDB disconnected. Attempting to reconnect...');
-        });
-
-        mongoose.connection.on('reconnected', () => {
-            console.log('✅ MongoDB reconnected');
-        });
-
-        // Graceful shutdown
-        process.on('SIGINT', async () => {
-            await mongoose.connection.close();
-            console.log('MongoDB connection closed through app termination');
-            process.exit(0);
-        });
-
-        return conn;
+        return sequelize;
     } catch (error) {
-        console.error(`❌ MongoDB connection failed: ${error.message}`);
-        throw error; // Throw instead of exit
+        console.error(`❌ PostgreSQL connection failed: ${error.message}`);
+        throw error;
     }
 };
 
-module.exports = connectDB;
+// Graceful shutdown
+process.on('SIGINT', async () => {
+    await sequelize.close();
+    console.log('PostgreSQL connection closed through app termination');
+    process.exit(0);
+});
+
+module.exports = { sequelize, connectDB };

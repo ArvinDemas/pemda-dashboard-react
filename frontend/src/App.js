@@ -1,15 +1,7 @@
-/**
- * PEMDA DIY Dashboard - React App
- * Main Application Component with Backend Proxy Authentication
- */
-
 import React, { useState, useEffect, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-
-// Components
 import Sidebar from './components/Sidebar';
-import Header from './components/Header';
 import Login from './pages/Login';
 import LogoutSuccess from './pages/LogoutSuccess';
 import Dashboard from './pages/Dashboard';
@@ -21,196 +13,119 @@ import Notes from './pages/Notes';
 import UserManagement from './pages/UserManagement';
 import Loading from './components/Loading';
 import ErrorBoundary from './components/shared/ErrorBoundary';
-
-// Styles
 import './styles/App.css';
 
 function App() {
   const [authenticated, setAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
-
-  // Guard against double initialization
   const authInitialized = useRef(false);
 
   useEffect(() => {
-    if (authInitialized.current) {
-      console.log('⚠️ Auth already initialized, skipping...');
+    if (authInitialized.current) return;
+    authInitialized.current = true;
+
+    const searchParams = new URLSearchParams(window.location.search);
+    const code = searchParams.get('code');
+    const errorParam = searchParams.get('error');
+
+    if (errorParam) {
+      window.history.replaceState({}, document.title, '/');
+      checkExistingAuth();
       return;
     }
 
-    console.log('🔐 Starting authentication check...');
-    console.log('📍 URL:', window.location.href);
-
-    // Check for authorization code in both query and hash
-    const searchParams = new URLSearchParams(window.location.search);
-    const hashParams = new URLSearchParams(window.location.hash.substring(1));
-    const code = searchParams.get('code') || hashParams.get('code');
-
-    authInitialized.current = true;
-
     if (code) {
-      console.log('✅ Auth code detected:', code.substring(0, 15) + '...');
       handleTokenExchange(code);
     } else {
-      console.log('ℹ️ No auth code - checking local storage');
       checkExistingAuth();
     }
   }, []);
 
   const handleTokenExchange = async (code) => {
-    console.log('🔄 Exchanging code for token via backend...');
-
-    // Use current host IP for API if not localhost
-    const apiUrl = window.location.hostname === 'localhost'
-      ? 'http://localhost:5000'
-      : `http://${window.location.hostname}:5000`;
+    const apiUrl = process.env.REACT_APP_API_URL ||
+      (window.location.hostname === 'localhost'
+        ? 'http://localhost:5000'
+        : `http://${window.location.hostname}:5000`);
 
     try {
       const response = await fetch(`${apiUrl}/api/auth/login`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          code: code,
-          redirect_uri: window.location.origin
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, redirect_uri: window.location.origin })
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        console.error('❌ Token exchange failed:', error);
-        throw new Error(error.error || 'Authentication failed');
-      }
+      if (!response.ok) throw new Error('Authentication failed');
 
       const data = await response.json();
-      console.log('✅ Token exchange successful');
-      console.log('👤 User:', data.user.username);
-
-      // Store tokens in localStorage
       localStorage.setItem('access_token', data.tokens.accessToken);
       localStorage.setItem('refresh_token', data.tokens.refreshToken);
       localStorage.setItem('user', JSON.stringify(data.user));
-
-      console.log('💾 Tokens stored in localStorage');
-
-      // Update state
       setUser(data.user);
       setAuthenticated(true);
-      setLoading(false);
+      window.history.replaceState({}, document.title, '/');
 
-      // Show success toast
       const toast = (await import('react-hot-toast')).default;
-      toast.success('Login Berhasil!', {
-        duration: 3000,
-        icon: '✅',
-      });
-
-      // Clean URL
-      window.history.replaceState({}, document.title, window.location.pathname);
-      console.log('✅ Authentication complete - Dashboard should render');
-
+      toast.success('Login Berhasil!', { duration: 3000 });
     } catch (error) {
-      console.error('❌ Authentication error:', error);
+      console.error('Auth error:', error);
       setAuthenticated(false);
-      setLoading(false);
     }
+    setLoading(false);
   };
 
   const checkExistingAuth = () => {
     const accessToken = localStorage.getItem('access_token');
     const userData = localStorage.getItem('user');
-
     if (accessToken && userData) {
-      console.log('🔍 Found existing auth in localStorage');
-
       try {
-        const user = JSON.parse(userData);
-        setUser(user);
+        setUser(JSON.parse(userData));
         setAuthenticated(true);
-        console.log('✅ Restored session for:', user.username);
-      } catch (error) {
-        console.error('❌ Failed to parse user data:', error);
+      } catch {
         localStorage.clear();
       }
-    } else {
-      console.log('ℹ️ No existing auth found');
     }
-
     setLoading(false);
   };
 
   const handleLogin = () => {
-    console.log('🔐 Redirecting to Keycloak...');
-
-    const keycloakUrl = `http://${window.location.hostname}:8080`;
-    const realm = 'Jogja-SSO';
-    const clientId = 'pemda-dashboard';
-    const redirectUri = window.location.origin;
-
-    // Generate PKCE challenge (optional but recommended)
-    const authUrl = `${keycloakUrl}/realms/${realm}/protocol/openid-connect/auth?` +
-      `client_id=${clientId}` +
-      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-      `&response_type=code` +
-      `&scope=openid%20roles`;
-
-    console.log('🌐 Redirect URL:', authUrl);
-    window.location.href = authUrl;
+    const keycloakUrl = process.env.REACT_APP_KEYCLOAK_URL ||
+      `http://${window.location.hostname}:8080`;
+    const params = new URLSearchParams({
+      client_id: 'pemda-dashboard',
+      redirect_uri: window.location.origin,
+      response_type: 'code',
+      scope: 'openid roles'
+    });
+    window.location.href = `${keycloakUrl}/realms/PemdaSSO/protocol/openid-connect/auth?${params.toString()}`;
   };
 
   const handleLogout = async () => {
-    console.log('🚪 Logging out...');
-
     const refreshToken = localStorage.getItem('refresh_token');
-
-    // Clear local storage immediately
     localStorage.clear();
     setAuthenticated(false);
     setUser(null);
 
-    console.log('✅ Local session cleared');
-
-    // Try to call backend logout silently (don't wait or fail if it errors)
     const apiUrl = window.location.hostname === 'localhost'
       ? 'http://localhost:5000'
       : `http://${window.location.hostname}:5000`;
 
-    // Make this non-blocking - fire and forget
     if (refreshToken) {
       fetch(`${apiUrl}/api/auth/logout`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refresh_token: refreshToken })
-      }).catch(err => {
-        console.warn('⚠️ Backend logout failed (non-critical):', err);
-      });
+      }).catch(() => {});
     }
 
-    // Show success toast
     const toast = (await import('react-hot-toast')).default;
-    toast.success('Logout Berhasil!', {
-      duration: 2000,
-      style: {
-        background: '#0ea5e9',
-        color: '#fff',
-      },
-    });
-
-    // Redirect to logout success page immediately (no Keycloak redirect!)
+    toast.success('Logout Berhasil!', { duration: 2000 });
     window.location.href = '/logout-success';
   };
 
-  if (loading) {
-    console.log('🔄 Rendering: Loading screen');
-    return <Loading />;
-  }
+  if (loading) return <Loading />;
 
   if (!authenticated) {
-    console.log('🔓 Rendering: Login page');
     return (
       <ErrorBoundary>
         <Router>
@@ -223,8 +138,6 @@ function App() {
       </ErrorBoundary>
     );
   }
-
-  console.log('✅ Rendering: Dashboard');
 
   return (
     <ErrorBoundary>

@@ -349,7 +349,7 @@ body:has(.sidebar.collapsed) .main-content {
 /* Stats */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: 20px;
   margin-bottom: 30px;
 }
@@ -736,7 +736,7 @@ body:has(.sidebar.collapsed) .main-content {
   }
 
   .stats-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, 1fr);
   }
 
   .page-header {

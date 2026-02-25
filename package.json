@@ -9,7 +9,8 @@
         "start": "npm run set-ip && concurrently \"npm run start:backend\" \"npm run start:frontend\"",
         "start:backend": "cd backend && npm start",
         "start:frontend": "cd frontend && npm start",
-        "dev": "npm run set-ip && npm start"
+        "dev": "npm run set-ip && npm start",
+        "start:cloudflare": "concurrently \"npm run start:backend\" \"npm run start:frontend\""
     },
     "keywords": [
         "dashboard",
@@ -17,5 +18,8 @@
         "pemda"
     ],
     "author": "PEMDA DIY",
-    "license": "MIT"
+    "license": "MIT",
+    "dependencies": {
+        "concurrently": "^9.2.1"
+    }
 }

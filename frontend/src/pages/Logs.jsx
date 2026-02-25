@@ -200,7 +200,7 @@ const Logs = () => {
                 </thead>
                 <tbody>
                   {logs.map((log) => (
-                    <tr key={log._id}>
+                    <tr key={log.id}>
                       <td>
                         <div className="log-datetime">
                           <span className="log-date">

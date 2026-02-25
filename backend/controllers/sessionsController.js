@@ -1,16 +1,16 @@
 /**
  * Sessions Controller
- * Manage Keycloak user sessions
+ * Manage Keycloak user sessions (Sequelize for logging)
  */
 
 const axios = require('axios');
+const LoginLog = require('../models/LoginLog');
 
 const KEYCLOAK_URL = process.env.KEYCLOAK_URL || 'http://localhost:8080';
-const REALM = process.env.KEYCLOAK_REALM || 'Jogja-SSO';
+const REALM = process.env.KEYCLOAK_REALM || 'PemdaSSO';
 
 /**
  * Get Keycloak admin token
- * Using Jogja-SSO realm directly (user-verified working configuration)
  */
 async function getAdminToken() {
     try {
@@ -44,10 +44,8 @@ exports.getSessions = async (req, res) => {
         const userId = req.user.id;
         console.log('📊 [Sessions] Fetching for userId:', userId);
 
-        // Get admin token
         const adminToken = await getAdminToken();
 
-        // Get user sessions from Keycloak
         const response = await axios.get(
             `${KEYCLOAK_URL}/admin/realms/${REALM}/users/${userId}/sessions`,
             {
@@ -61,7 +59,6 @@ exports.getSessions = async (req, res) => {
 
         const sessions = response.data.map(session => {
             const ip = session.ipAddress || '';
-            // Fallback for localhost/local IPs
             let location = 'Unknown';
             if (ip === '::1' || ip === '127.0.0.1' || ip.startsWith('10.') || ip.startsWith('192.168.')) {
                 location = 'Yogyakarta (Local)';
@@ -82,7 +79,6 @@ exports.getSessions = async (req, res) => {
     } catch (error) {
         console.error('❌ [Sessions] Error:', error.message);
 
-        // If Keycloak is unavailable, return mock data in dev mode
         if (process.env.NODE_ENV === 'development') {
             return res.json({
                 sessions: [{
@@ -114,7 +110,6 @@ exports.terminateSession = async (req, res) => {
         const { sessionId } = req.params;
         const userId = req.user.id;
 
-        // Prevent terminating current session
         if (sessionId === req.user.sessionId) {
             return res.status(400).json({
                 error: 'Bad Request',
@@ -122,10 +117,8 @@ exports.terminateSession = async (req, res) => {
             });
         }
 
-        // Get admin token
         const adminToken = await getAdminToken();
 
-        // Terminate session via Keycloak Admin API
         await axios.delete(
             `${KEYCLOAK_URL}/admin/realms/${REALM}/sessions/${sessionId}`,
             {
@@ -136,7 +129,6 @@ exports.terminateSession = async (req, res) => {
         );
 
         // Log the session termination
-        const LoginLog = require('../models/LoginLog');
         await LoginLog.logEvent({
             userId,
             action: 'SESSION_TERMINATED',
@@ -176,10 +168,8 @@ exports.terminateAllSessions = async (req, res) => {
         const userId = req.user.id;
         const currentSessionId = req.user.sessionId;
 
-        // Get admin token
         const adminToken = await getAdminToken();
 
-        // Get all user sessions
         const sessionsResponse = await axios.get(
             `${KEYCLOAK_URL}/admin/realms/${REALM}/users/${userId}/sessions`,
             {
@@ -192,7 +182,6 @@ exports.terminateAllSessions = async (req, res) => {
         const sessions = sessionsResponse.data;
         let terminatedCount = 0;
 
-        // Terminate all except current
         for (const session of sessions) {
             if (session.id !== currentSessionId) {
                 try {
@@ -212,7 +201,6 @@ exports.terminateAllSessions = async (req, res) => {
         }
 
         // Log the action
-        const LoginLog = require('../models/LoginLog');
         await LoginLog.logEvent({
             userId,
             action: 'SESSION_TERMINATED',
@@ -235,4 +223,3 @@ exports.terminateAllSessions = async (req, res) => {
         });
     }
 };
-

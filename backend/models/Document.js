@@ -1,105 +1,110 @@
 /**
- * Document Model
- * File uploads with security validation
- * Following file-uploads skill: magic byte verification, size limits, filename sanitization
+ * Document Model (Sequelize)
+ * File uploads and folders with security validation
  */
 
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../config/database');
 const path = require('path');
 
-const documentSchema = new mongoose.Schema({
+const Document = sequelize.define('Document', {
+    id: {
+        type: DataTypes.INTEGER,
+        primaryKey: true,
+        autoIncrement: true
+    },
     userId: {
-        type: String,
-        required: [true, 'User ID is required'],
-        index: true
+        type: DataTypes.STRING,
+        allowNull: false,
+        field: 'user_id'
     },
     type: {
-        type: String,
-        enum: ['file', 'folder'],
-        default: 'file',
-        required: true
+        type: DataTypes.ENUM('file', 'folder'),
+        defaultValue: 'file',
+        allowNull: false
     },
     parentFolderId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Document',
-        default: null,
-        index: true
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        defaultValue: null,
+        field: 'parent_folder_id',
+        references: {
+            model: 'documents',
+            key: 'id'
+        }
     },
     filename: {
-        type: String,
-        required: function () { return this.type === 'file'; },
-        // This is the sanitized UUID filename stored on disk (for files only)
+        type: DataTypes.STRING,
+        allowNull: true
+        // Sanitized UUID filename (for files only)
     },
     originalName: {
-        type: String,
-        required: [true, 'Original filename/folder name is required'],
-        trim: true
+        type: DataTypes.STRING,
+        allowNull: false,
+        field: 'original_name'
     },
     mimeType: {
-        type: String,
-        required: function () { return this.type === 'file'; },
-        enum: [
-            'application/pdf',
-            'application/msword',
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            'image/jpeg',
-            'image/png',
-            'image/jpg'
-        ]
+        type: DataTypes.STRING,
+        allowNull: true,
+        field: 'mime_type',
+        validate: {
+            isIn: [[
+                'application/pdf',
+                'application/msword',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                'image/jpeg',
+                'image/png',
+                'image/jpg'
+            ]]
+        }
     },
     size: {
-        type: Number,
-        required: function () { return this.type === 'file'; },
-        max: [10485760, 'File size cannot exceed 10MB'] // 10MB in bytes
+        type: DataTypes.BIGINT,
+        allowNull: true,
+        validate: {
+            max: 10485760 // 10MB
+        }
     },
-    path: {
-        type: String,
-        required: function () { return this.type === 'file'; }
-    },
-    url: {
-        type: String,
-        // Will be constructed as /uploads/{userId}/{filename}
+    fileUrl: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        field: 'file_url'
+        // MinIO object URL
     },
     uploadedAt: {
-        type: Date,
-        default: Date.now,
-        index: true
+        type: DataTypes.DATE,
+        defaultValue: DataTypes.NOW,
+        field: 'uploaded_at'
     },
-    // Security: verified via magic bytes, not just extension
     verified: {
-        type: Boolean,
-        default: function () { return this.type === 'folder' ? true : false; }
+        type: DataTypes.BOOLEAN,
+        defaultValue: false
     },
-    // Optional description
     description: {
-        type: String,
-        maxlength: [500, 'Description cannot exceed 500 characters']
+        type: DataTypes.STRING(500),
+        allowNull: true
     }
 }, {
-    timestamps: true
+    tableName: 'documents',
+    timestamps: true,
+    indexes: [
+        { fields: ['user_id'] },
+        { fields: ['user_id', 'uploaded_at'] },
+        { fields: ['user_id', 'parent_folder_id', 'type'] }
+    ]
 });
 
-// Compound indexes for efficient querying
-documentSchema.index({ userId: 1, uploadedAt: -1 });
-documentSchema.index({ userId: 1, parentFolderId: 1, type: 1 });
+// Self-referencing association for folder hierarchy
+Document.hasMany(Document, { as: 'children', foreignKey: 'parent_folder_id' });
+Document.belongsTo(Document, { as: 'parentFolder', foreignKey: 'parent_folder_id' });
 
-// Virtual for file extension
-documentSchema.virtual('extension').get(function () {
-    return path.extname(this.originalName).toLowerCase();
-});
-
-// Virtual for human-readable file size
-documentSchema.virtual('readableSize').get(function () {
-    const bytes = this.size;
-    if (bytes === 0) return '0 Bytes';
+// Helper: human-readable file size
+Document.formatBytes = function (bytes) {
+    if (!bytes || bytes === 0) return '0 Bytes';
     const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB'];
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
-});
+};
 
-// Set virtuals to be included in JSON output
-documentSchema.set('toJSON', { virtuals: true });
-documentSchema.set('toObject', { virtuals: true });
-
-module.exports = mongoose.model('Document', documentSchema);
+module.exports = Document;

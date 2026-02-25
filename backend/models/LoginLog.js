@@ -1,21 +1,25 @@
 /**
- * LoginLog Model
+ * LoginLog Model (Sequelize)
  * Tracks authentication events and user actions
  * Following auth-implementation-patterns: never log tokens/credentials
  */
 
-const mongoose = require('mongoose');
+const { DataTypes, Op } = require('sequelize');
+const { sequelize } = require('../config/database');
 
-const loginLogSchema = new mongoose.Schema({
+const LoginLog = sequelize.define('LoginLog', {
+    id: {
+        type: DataTypes.INTEGER,
+        primaryKey: true,
+        autoIncrement: true
+    },
     userId: {
-        type: String,
-        required: [true, 'User ID is required'],
-        index: true
+        type: DataTypes.STRING,
+        allowNull: false,
+        field: 'user_id'
     },
     action: {
-        type: String,
-        required: [true, 'Action is required'],
-        enum: [
+        type: DataTypes.ENUM(
             'LOGIN_SUCCESS',
             'LOGIN_FAILED',
             'LOGOUT',
@@ -24,75 +28,68 @@ const loginLogSchema = new mongoose.Schema({
             'PROFILE_UPDATE',
             'SESSION_TERMINATED',
             'TOKEN_REFRESH'
-        ],
-        index: true
+        ),
+        allowNull: false
     },
     ip: {
-        type: String,
-        required: [true, 'IP address is required']
+        type: DataTypes.STRING,
+        allowNull: false
     },
     userAgent: {
-        type: String,
-        required: [true, 'User agent is required']
+        type: DataTypes.TEXT,
+        allowNull: false,
+        field: 'user_agent'
     },
     sessionId: {
-        type: String,
-        index: true
+        type: DataTypes.STRING,
+        allowNull: true,
+        field: 'session_id'
     },
     metadata: {
-        // Additional context-specific data
-        type: mongoose.Schema.Types.Mixed,
-        default: {}
+        type: DataTypes.JSONB,
+        defaultValue: {}
     },
     success: {
-        type: Boolean,
-        default: true
+        type: DataTypes.BOOLEAN,
+        defaultValue: true
     },
     errorMessage: {
-        type: String,
-        // Only store user-safe error messages, never sensitive data
+        type: DataTypes.STRING,
+        allowNull: true,
+        field: 'error_message'
     },
     timestamp: {
-        type: Date,
-        default: Date.now,
-        index: true
+        type: DataTypes.DATE,
+        defaultValue: DataTypes.NOW
     }
 }, {
-    timestamps: false // We use our own timestamp field
+    tableName: 'login_logs',
+    timestamps: false, // We use our own timestamp field
+    indexes: [
+        { fields: ['user_id'] },
+        { fields: ['user_id', 'timestamp'] },
+        { fields: ['session_id', 'timestamp'] },
+        { fields: ['user_id', 'action', 'timestamp'] }
+    ]
 });
 
-// Compound indexes for efficient querying
-loginLogSchema.index({ userId: 1, timestamp: -1 });
-loginLogSchema.index({ sessionId: 1, timestamp: -1 });
-loginLogSchema.index({ userId: 1, action: 1, timestamp: -1 });
-
-// Virtual for formatted timestamp
-loginLogSchema.virtual('formattedTimestamp').get(function () {
-    return this.timestamp.toLocaleString('id-ID', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-    });
-});
-
-// Static method to log event
-loginLogSchema.statics.logEvent = async function (eventData) {
+/**
+ * Static method to log event (non-throwing)
+ */
+LoginLog.logEvent = async function (eventData) {
     try {
-        const log = new this(eventData);
-        await log.save();
+        const log = await this.create(eventData);
         return log;
     } catch (error) {
         console.error('Failed to log event:', error);
-        // Don't throw - logging failures shouldn't break the app
         return null;
     }
 };
 
-// Static method to get user login history with pagination
-loginLogSchema.statics.getUserHistory = async function (userId, options = {}) {
+/**
+ * Static method to get user login history with pagination
+ */
+LoginLog.getUserHistory = async function (userId, options = {}) {
     const {
         page = 1,
         limit = 20,
@@ -101,28 +98,31 @@ loginLogSchema.statics.getUserHistory = async function (userId, options = {}) {
         action
     } = options;
 
-    const query = { userId };
+    const where = { userId };
 
     if (fromDate || toDate) {
-        query.timestamp = {};
-        if (fromDate) query.timestamp.$gte = new Date(fromDate);
-        if (toDate) query.timestamp.$lte = new Date(toDate);
+        where.timestamp = {};
+        if (fromDate) where.timestamp[Op.gte] = new Date(fromDate);
+        if (toDate) {
+            const endOfDay = new Date(toDate);
+            endOfDay.setHours(23, 59, 59, 999);
+            where.timestamp[Op.lte] = endOfDay;
+        }
     }
 
     if (action) {
-        query.action = action;
+        where.action = action;
     }
 
-    const skip = (page - 1) * limit;
+    const offset = (page - 1) * limit;
 
-    const [logs, total] = await Promise.all([
-        this.find(query)
-            .sort({ timestamp: -1 })
-            .skip(skip)
-            .limit(limit)
-            .lean(),
-        this.countDocuments(query)
-    ]);
+    const { rows: logs, count: total } = await this.findAndCountAll({
+        where,
+        order: [['timestamp', 'DESC']],
+        offset,
+        limit,
+        raw: true
+    });
 
     return {
         logs,
@@ -135,4 +135,4 @@ loginLogSchema.statics.getUserHistory = async function (userId, options = {}) {
     };
 };
 
-module.exports = mongoose.model('LoginLog', loginLogSchema);
+module.exports = LoginLog;

@@ -22,7 +22,7 @@ PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKEND_ENV="$PROJECT_DIR/backend/.env"
 FRONTEND_ENV="$PROJECT_DIR/frontend/.env"
 CONTAINER_NAME="keycloak_arvin"
-REALM="Jogja-SSO"
+REALM="PemdaSSO"
 CLIENT_ID="pemda-dashboard"
 
 echo -e "${BOLD}${BLUE}"
@@ -86,6 +86,40 @@ else
         echo -e "${GREEN}✅ Updated: frontend/.env${NC}"
     else
         echo -e "${YELLOW}⚠️  frontend/.env not found${NC}"
+    fi
+
+    echo ""
+
+    # ===================================================================
+    # STEP 4.5: Restart Keycloak if IP changed (Crucial for KC_HOSTNAME)
+    # ===================================================================
+    echo -e "${BOLD}${BLUE}━━━ Restarting Keycloak Container ━━━${NC}\n"
+    
+    if docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+        echo -e "${CYAN}🔄 Restarting Keycloak with new hostname: ${CURRENT_IP}...${NC}"
+        docker stop "$CONTAINER_NAME" >/dev/null
+        docker rm "$CONTAINER_NAME" >/dev/null
+        
+        # Re-run the container with new KC_HOSTNAME
+        # Note: We use the same command structure as the original setup
+        docker run -d --name "$CONTAINER_NAME" \
+          -p 8080:8080 \
+          -e KEYCLOAK_ADMIN=admin \
+          -e KEYCLOAK_ADMIN_PASSWORD=admin \
+          -e KC_HOSTNAME="$CURRENT_IP" \
+          -e KC_HTTP_ENABLED=true \
+          -e KC_HOSTNAME_STRICT=false \
+          -v keycloak_data:/opt/keycloak/data \
+          -v /Users/mrnugroho/jogja-theme:/opt/keycloak/themes/sso-pemda \
+          pemdasso-final start-dev >/dev/null
+          
+        echo -e "${GREEN}✅ Keycloak restarted with KC_HOSTNAME=${CURRENT_IP}${NC}"
+        
+        # Wait for Keycloak to be ready again
+        echo -e "${YELLOW}⏳ Waiting for Keycloak to initialize (may take 20-30s)...${NC}"
+        sleep 20
+    else
+        echo -e "${YELLOW}⚠️  Keycloak container not found to restart.${NC}"
     fi
 
     echo ""
