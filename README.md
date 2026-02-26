@@ -1,5 +1,8 @@
 # PEMDA DIY Dashboard - React + Node.js + Keycloak
 
+## LINK DOKUMENTASI
+https://docs.google.com/document/d/1TOWyc7GWLFrSWe_iZEVQYOG4u2PABEry/edit?usp=sharing&ouid=110544658660321133336&rtpof=true&sd=true
+
 ## 🚀 STARTER TEMPLATE - SETUP LENGKAP
 
 **Tech Stack:**
