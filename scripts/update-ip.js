@@ -110,7 +110,7 @@ function main() {
         console.log(`${colors.green}✅ Found IP: ${newIp}${colors.reset}\n`);
 
         // Step 2: Read backend .env to get old IP
-        const backendEnvPath = path.join(__dirname, 'backend', '.env');
+        const backendEnvPath = path.join(__dirname, '..', 'backend', '.env');
         let oldIp = null;
 
         if (fs.existsSync(backendEnvPath)) {
@@ -137,7 +137,7 @@ function main() {
         const backendUpdated = updateEnvFile(backendEnvPath, oldIp, newIp);
 
         // Step 4: Update frontend/.env (if exists)
-        const frontendEnvPath = path.join(__dirname, 'frontend', '.env');
+        const frontendEnvPath = path.join(__dirname, '..', 'frontend', '.env');
         const frontendUpdated = updateEnvFile(frontendEnvPath, oldIp, newIp);
 
         // Step 5: Success message

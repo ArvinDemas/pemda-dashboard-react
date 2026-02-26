@@ -114,8 +114,8 @@ const Sidebar = ({ onLogout, user }) => {
           </div>
           {!isCollapsed && (
             <div className="brand-text">
-              <h1>PEMDA DIY</h1>
-              <p>Account Console</p>
+              <h1 style={{ fontSize: '1.05rem', lineHeight: '1.1', marginBottom: '2px' }}>Pemerintah Daerah</h1>
+              <p style={{ fontSize: '0.65rem', letterSpacing: '0.5px' }}>Daerah Istimewa Yogyakarta</p>
             </div>
           )}
 

@@ -2,10 +2,10 @@
     "name": "pemda-dashboard",
     "version": "1.0.0",
     "description": "PEMDA DIY Dashboard - Keycloak-integrated application",
-    "main": "update-ip.js",
+    "main": "scripts/update-ip.js",
     "scripts": {
-        "set-ip": "node update-ip.js",
-        "quick-start": "./quick-start.sh",
+        "set-ip": "node scripts/update-ip.js",
+        "quick-start": "./scripts/quick-start.sh",
         "start": "npm run set-ip && concurrently \"npm run start:backend\" \"npm run start:frontend\"",
         "start:backend": "cd backend && npm start",
         "start:frontend": "cd frontend && npm start",

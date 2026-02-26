@@ -23,7 +23,7 @@ echo ""
 
 # Navigate to project directory
 echo -e "${GREEN}📂 Navigating to project directory...${NC}"
-cd "$SCRIPT_DIR"
+cd "$SCRIPT_DIR/.."
 
 # Check if package.json exists
 if [ ! -f "package.json" ]; then

@@ -58,7 +58,7 @@ function LogoutSuccess() {
           marginBottom: '2rem',
           lineHeight: '1.6'
         }}>
-          Anda telah berhasil keluar dari PEMDA DIY Dashboard
+          Anda telah berhasil keluar dari Dashboard Pemerintah Daerah Istimewa Yogyakarta
         </p>
 
         {/* Info Box */}
@@ -134,7 +134,7 @@ function LogoutSuccess() {
             fontSize: '0.875rem',
             fontWeight: '500'
           }}>
-            © 2026 PEMDA DIY Dashboard
+            © 2026 Pemerintah Daerah Istimewa Yogyakarta
           </p>
         </div>
       </div>

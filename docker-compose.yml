@@ -56,7 +56,7 @@ services:
       KC_DB_URL: jdbc:postgresql://db:5432/keycloak
       KC_DB_USERNAME: postgres
       KC_DB_PASSWORD: postgres
-      KC_HOSTNAME: 192.168.100.142
+      KC_HOSTNAME: 10.7.183.156
       KC_HTTP_ENABLED: "true"
       KC_HOSTNAME_STRICT: "false"
       KEYCLOAK_ADMIN: admin
